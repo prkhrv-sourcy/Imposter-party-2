@@ -56,7 +56,7 @@ function VoteRevealCard({ voter, target, revealed }) {
   );
 }
 
-export default function GameScreen({ room, myId, onDescribe, onVote, onContinue, onChat }) {
+export default function GameScreen({ room, myId, onDescribe, onVote, onContinue, onChat, onSkipDiscussion }) {
   const [clueText, setClueText] = useState('');
   const [chatText, setChatText] = useState('');
   const [votedFor, setVotedFor] = useState(null);
@@ -159,9 +159,9 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue,
             isMe={player.id === myId}
             isHost={player.id === room.hostId}
             isTurn={currentTurnPlayer?.id === player.id}
-            votingMode={room.state === 'voting' && me?.alive}
-            votedFor={votedFor}
-            onVote={handleVote}
+            votingMode={false}
+            votedFor={null}
+            onVote={null}
             voteCount={voteCounts[player.id]}
           />
         ))}
@@ -240,7 +240,18 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue,
             <h3 className="text-xl font-bold text-orange-300">
               {'\u{1F4AC}'} Discussion Time!
             </h3>
-            <Timer endTime={room.timerEnd} />
+            <div className="flex items-center gap-3">
+              <Timer endTime={room.timerEnd} />
+              {isHost && (
+                <button
+                  onClick={onSkipDiscussion}
+                  className="px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-lg
+                    text-white/60 hover:text-white transition-all"
+                >
+                  Skip to Vote
+                </button>
+              )}
+            </div>
           </div>
           <p className="text-white/40 text-sm mb-4">Debate who the imposter might be. Accuse, defend, bluff!</p>
 
@@ -293,16 +304,54 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue,
 
       {/* Voting phase */}
       {room.state === 'voting' && (
-        <div className="glass-strong rounded-2xl p-6 text-center animate-slide-up">
-          <Timer endTime={room.timerEnd} large />
-          <h3 className="text-2xl font-bold text-red-300 mb-2 mt-4">
-            {'\u{1F5F3}\uFE0F'} Vote for the Imposter!
-          </h3>
-          <p className="text-white/40 text-sm">
-            {me?.alive
-              ? (votedFor ? 'Vote cast! Waiting for others...' : 'Click a player above to vote')
-              : 'You are eliminated. Watching the vote...'}
-          </p>
+        <div className="glass-strong rounded-2xl p-6 animate-slide-up">
+          <div className="text-center mb-4">
+            <Timer endTime={room.timerEnd} large />
+            <h3 className="text-2xl font-bold text-red-300 mt-4 mb-1">
+              {'\u{1F5F3}\uFE0F'} Who is the Imposter?
+            </h3>
+            <p className="text-white/40 text-sm">
+              {!me?.alive
+                ? 'You are eliminated. Watching the vote...'
+                : votedFor
+                  ? 'Vote cast! Waiting for others...'
+                  : 'Tap a player below to cast your vote'}
+            </p>
+          </div>
+
+          {me?.alive && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+              {room.players.filter(p => p.alive && p.id !== myId).map(player => (
+                <button
+                  key={player.id}
+                  onClick={() => !votedFor && handleVote(player.id)}
+                  disabled={!!votedFor}
+                  className={`
+                    flex items-center gap-3 p-3 rounded-xl transition-all duration-200
+                    ${votedFor === player.id
+                      ? 'ring-2 ring-red-400 bg-red-500/20 scale-105'
+                      : votedFor
+                        ? 'opacity-40 cursor-not-allowed bg-white/5'
+                        : 'bg-white/5 hover:bg-red-500/10 hover:ring-1 hover:ring-red-400/50 hover:scale-[1.02] active:scale-95 cursor-pointer'
+                    }
+                  `}
+                >
+                  <Avatar avatar={player.avatar} color={player.avatarColor} size="sm" />
+                  <div className="text-left flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white truncate">{player.name}</div>
+                    {player.title && (
+                      <div className="text-xs" style={{ color: player.title.color }}>{player.title.name}</div>
+                    )}
+                  </div>
+                  {votedFor === player.id ? (
+                    <span className="text-red-400 text-xs font-bold px-2 py-1 bg-red-500/20 rounded-full">VOTED</span>
+                  ) : !votedFor && (
+                    <span className="text-white/30 text-xs font-medium px-2 py-1 bg-white/5 rounded-full">Vote</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

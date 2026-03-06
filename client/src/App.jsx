@@ -72,6 +72,12 @@ export default function App() {
     });
   }, []);
 
+  const handleSkipDiscussion = useCallback(() => {
+    socket.emit('discussion:skip', null, (res) => {
+      if (res?.error) setError(res.error);
+    });
+  }, []);
+
   const handleContinue = useCallback(() => {
     if (room?.state === 'gameOver') {
       socket.emit('game:start', null, (res) => {
@@ -119,6 +125,7 @@ export default function App() {
           onVote={handleVote}
           onContinue={handleContinue}
           onChat={handleChat}
+          onSkipDiscussion={handleSkipDiscussion}
         />
       )}
     </div>

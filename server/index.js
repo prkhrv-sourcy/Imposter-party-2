@@ -533,6 +533,15 @@ io.on('connection', (socket) => {
     broadcastRoom(room);
   });
 
+  socket.on('discussion:skip', (_, callback) => {
+    const room = [...rooms.values()].find(r => r.hostId === playerId);
+    if (!room || room.state !== 'discussing') return callback?.({ error: 'Cannot skip' });
+
+    clearTimer(room);
+    startVoting(room);
+    callback?.({ success: true });
+  });
+
   socket.on('vote:cast', ({ targetId }, callback) => {
     const room = findRoomByPlayer(playerId);
     if (!room || room.state !== 'voting') return callback?.({ error: 'Not voting phase' });
