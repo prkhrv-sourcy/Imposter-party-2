@@ -200,8 +200,6 @@ function startNextTurn(room) {
   }
 
   room.state = 'describing';
-  broadcastRoom(room);
-
   startTimer(room, room.settings.turnDuration, () => {
     room.descriptions.push({
       playerId: currentPlayerId,
@@ -214,28 +212,25 @@ function startNextTurn(room) {
     room.currentTurnIndex++;
     startNextTurn(room);
   });
+  broadcastRoom(room);
 }
 
 function startDiscussion(room) {
   room.state = 'discussing';
   room.chatMessages = [];
-  clearTimer(room);
-  broadcastRoom(room);
-
   startTimer(room, room.settings.discussionDuration, () => {
     startVoting(room);
   });
+  broadcastRoom(room);
 }
 
 function startVoting(room) {
   room.state = 'voting';
   room.votes = {};
-  clearTimer(room);
-  broadcastRoom(room);
-
   startTimer(room, room.settings.voteDuration, () => {
     startVoteReveal(room);
   });
+  broadcastRoom(room);
 }
 
 function startVoteReveal(room) {
