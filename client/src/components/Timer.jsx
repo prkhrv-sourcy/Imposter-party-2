@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-export default function Timer({ endTime }) {
+export default function Timer({ endTime, large = false }) {
   const [remaining, setRemaining] = useState(0);
 
   useEffect(() => {
@@ -15,6 +15,29 @@ export default function Timer({ endTime }) {
   if (!endTime) return null;
 
   const isLow = remaining <= 5;
+
+  if (large) {
+    const total = Math.ceil((endTime - (Date.now() - remaining * 1000)) / 1000);
+    const pct = total > 0 ? (remaining / total) * 100 : 0;
+
+    return (
+      <div className="flex flex-col items-center gap-2 w-full">
+        <div className={`
+          text-4xl font-bold tabular-nums
+          ${isLow ? 'text-red-400 animate-shake' : 'text-white'}
+          transition-colors duration-300
+        `}>
+          {remaining}s
+        </div>
+        <div className="w-full max-w-xs h-2 bg-white/10 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-200 ${isLow ? 'bg-red-500' : 'bg-indigo-500'}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`

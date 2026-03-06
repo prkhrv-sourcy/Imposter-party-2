@@ -101,6 +101,9 @@ function getPublicPlayer(player, gameState, requesterId) {
 }
 
 function getPublicRoom(room, requesterId) {
+  const requester = room.players.find(p => p.id === requesterId);
+  const isImposter = requester?.isImposter && room.state !== 'gameOver';
+
   return {
     code: room.code,
     hostId: room.hostId,
@@ -110,7 +113,7 @@ function getPublicRoom(room, requesterId) {
     currentTurnIndex: room.currentTurnIndex,
     turnOrder: room.turnOrder,
     votes: (room.state === 'roundResult' || room.state === 'gameOver') ? room.votes : {},
-    category: room.category,
+    category: isImposter ? '???' : room.category,
     descriptions: room.descriptions,
     eliminatedThisRound: room.eliminatedThisRound,
     winner: room.winner,

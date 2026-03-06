@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 
-export default function HomeScreen({ onCreateRoom, onJoinRoom }) {
-  const [mode, setMode] = useState(null); // null, 'create', 'join'
+export default function HomeScreen({ onCreateRoom, onJoinRoom, initialRoomCode = '' }) {
+  const [mode, setMode] = useState(initialRoomCode ? 'join' : null);
   const [name, setName] = useState('');
-  const [roomCode, setRoomCode] = useState('');
+  const [roomCode, setRoomCode] = useState(initialRoomCode);
   const [maxRounds, setMaxRounds] = useState(3);
   const [turnDuration, setTurnDuration] = useState(30);
   const [voteDuration, setVoteDuration] = useState(20);

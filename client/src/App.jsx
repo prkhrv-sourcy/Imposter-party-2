@@ -96,7 +96,11 @@ export default function App() {
 
       {/* Screens */}
       {!room && (
-        <HomeScreen onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} />
+        <HomeScreen
+          onCreateRoom={handleCreateRoom}
+          onJoinRoom={handleJoinRoom}
+          initialRoomCode={new URLSearchParams(window.location.search).get('room') || ''}
+        />
       )}
       {room && room.state === 'lobby' && (
         <LobbyScreen room={room} myId={socket.id} onStartGame={handleStartGame} />

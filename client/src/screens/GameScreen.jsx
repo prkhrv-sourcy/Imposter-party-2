@@ -59,7 +59,7 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue 
           {me.isImposter ? (
             <div>
               <span className="text-red-400 text-lg font-bold">{'\u{1F47F}'} You are the IMPOSTER!</span>
-              <p className="text-white/40 text-sm mt-1">Blend in. Don't get caught.</p>
+              <p className="text-white/40 text-sm mt-1">You don't know the word or category. Blend in!</p>
             </div>
           ) : (
             <div>
@@ -108,8 +108,9 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue 
       {/* Describing phase - current turn */}
       {room.state === 'describing' && (
         <div className="glass-strong rounded-2xl p-6 text-center animate-slide-up">
+          <Timer endTime={room.timerEnd} large />
           {isMyTurn ? (
-            <div>
+            <div className="mt-4">
               <h3 className="text-xl font-bold text-yellow-300 mb-4">
                 {'\u{1F3A4}'} Your turn! Give a clue
               </h3>
@@ -136,7 +137,7 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue 
               </div>
             </div>
           ) : (
-            <div>
+            <div className="mt-4">
               <Avatar
                 avatar={currentTurnPlayer?.avatar}
                 color={currentTurnPlayer?.avatarColor}
@@ -155,7 +156,8 @@ export default function GameScreen({ room, myId, onDescribe, onVote, onContinue 
       {/* Voting phase */}
       {room.state === 'voting' && (
         <div className="glass-strong rounded-2xl p-6 text-center animate-slide-up">
-          <h3 className="text-2xl font-bold text-red-300 mb-2">
+          <Timer endTime={room.timerEnd} large />
+          <h3 className="text-2xl font-bold text-red-300 mb-2 mt-4">
             {'\u{1F5F3}\uFE0F'} Vote for the Imposter!
           </h3>
           <p className="text-white/40 text-sm">

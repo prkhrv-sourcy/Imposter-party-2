@@ -1,20 +1,74 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Avatar from '../components/Avatar';
 
 export default function LobbyScreen({ room, myId, onStartGame }) {
   const isHost = room.hostId === myId;
   const canStart = room.players.length >= 3;
+  const [copied, setCopied] = useState(false);
+
+  const shareLink = `${window.location.origin}?room=${room.code}`;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+      const input = document.createElement('input');
+      input.value = shareLink;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Join my Imposter Party!',
+          text: `Join my game with code ${room.code}`,
+          url: shareLink
+        });
+      } catch {}
+    } else {
+      handleCopy();
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center p-4 pt-12">
-      <div className="text-center mb-8 animate-bounce-in">
+      <div className="text-center mb-6 animate-bounce-in">
         <h2 className="text-2xl font-bold text-white/70 mb-2">Room Code</h2>
         <div className="glass-strong inline-block px-8 py-4 rounded-2xl">
           <span className="text-5xl font-bold tracking-[0.3em] font-mono bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
             {room.code}
           </span>
         </div>
-        <p className="text-white/40 mt-2 text-sm">Share this code with friends!</p>
+      </div>
+
+      {/* Share link */}
+      <div className="flex gap-2 mb-8 animate-fade-in">
+        <button
+          onClick={handleCopy}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200
+            ${copied
+              ? 'bg-green-500/20 text-green-400'
+              : 'glass hover:bg-white/10 text-white/70 hover:text-white'
+            }`}
+        >
+          {copied ? 'Copied!' : 'Copy Link'}
+        </button>
+        <button
+          onClick={handleShare}
+          className="px-4 py-2 glass rounded-xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-all duration-200"
+        >
+          Share
+        </button>
       </div>
 
       <div className="glass rounded-3xl p-6 w-full max-w-2xl mb-8">
