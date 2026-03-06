@@ -31,6 +31,11 @@ export default function PlayerCard({
           {player.name}
           {isMe && <span className="text-indigo-400 ml-1">(you)</span>}
         </div>
+        {player.title && (
+          <span className="text-xs font-semibold block" style={{ color: player.title.color }}>
+            {player.title.name}
+          </span>
+        )}
         {isHost && (
           <span className="text-xs text-yellow-400">{'\u{1F451}'} Host</span>
         )}

@@ -101,7 +101,7 @@ export default function LobbyScreen({ room, myId, onStartGame }) {
       </div>
 
       <div className="glass rounded-2xl p-4 w-full max-w-md text-center mb-6">
-        <div className="grid grid-cols-3 gap-4 text-sm">
+        <div className="grid grid-cols-4 gap-3 text-sm">
           <div>
             <div className="text-white/40">Rounds</div>
             <div className="text-xl font-bold text-indigo-400">{room.settings.maxRounds}</div>
@@ -111,9 +111,16 @@ export default function LobbyScreen({ room, myId, onStartGame }) {
             <div className="text-xl font-bold text-indigo-400">{room.settings.turnDuration}s</div>
           </div>
           <div>
+            <div className="text-white/40">Discuss</div>
+            <div className="text-xl font-bold text-indigo-400">{room.settings.discussionDuration}s</div>
+          </div>
+          <div>
             <div className="text-white/40">Vote</div>
             <div className="text-xl font-bold text-indigo-400">{room.settings.voteDuration}s</div>
           </div>
+        </div>
+        <div className="mt-3 text-xs text-white/30">
+          Theme: {room.settings.theme === 'space' ? '\u{1F680} Space Station' : room.settings.theme === 'noir' ? '\u{1F575}\uFE0F Detective Noir' : '\u{1F335} Jungle Safari'}
         </div>
       </div>
 

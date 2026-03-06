@@ -41,40 +41,63 @@ const AVATAR_COLORS = [
   '#F5B7B1', '#85C1E9'
 ];
 
+const TITLES = {
+  detective: { name: 'Master Detective', minWins: 5, color: '#FFD700' },
+  serial: { name: 'Serial Imposter', minImposterWins: 3, color: '#FF4444' },
+  trust: { name: 'Trust Issues', minVotesCast: 20, color: '#9B59B6' },
+  survivor: { name: 'Survivor', minGamesPlayed: 10, color: '#2ECC71' },
+  rookie: { name: 'Rookie', minGamesPlayed: 0, color: '#95A5A6' },
+};
+
+function getTitle(stats) {
+  if (stats.imposterWins >= 3) return TITLES.serial;
+  if (stats.teamWins >= 5) return TITLES.detective;
+  if (stats.votesCast >= 20) return TITLES.trust;
+  if (stats.gamesPlayed >= 10) return TITLES.survivor;
+  return TITLES.rookie;
+}
+
 function createRoom(hostId, hostName, settings) {
   const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-  const avatarIndex = 0;
   const room = {
     code: roomCode,
     hostId,
     players: [{
       id: hostId,
       name: hostName,
-      avatar: AVATARS[avatarIndex],
-      avatarColor: AVATAR_COLORS[avatarIndex],
+      avatar: AVATARS[0],
+      avatarColor: AVATAR_COLORS[0],
       alive: true,
       isImposter: false,
       hasDescribed: false,
-      word: null
+      word: null,
+      stats: { gamesPlayed: 0, teamWins: 0, imposterWins: 0, votesCast: 0 }
     }],
     settings: {
       maxRounds: settings.maxRounds || 3,
       maxPlayers: Math.min(settings.maxPlayers || 32, 32),
       turnDuration: settings.turnDuration || 30,
-      voteDuration: settings.voteDuration || 20
+      discussionDuration: settings.discussionDuration || 45,
+      voteDuration: settings.voteDuration || 20,
+      theme: settings.theme || 'space'
     },
-    state: 'lobby', // lobby, playing, describing, voting, roundResult, gameOver
+    // States: lobby, playing, describing, discussing, voting, voteReveal, roundResult, gameOver
+    state: 'lobby',
     currentRound: 0,
     currentTurnIndex: 0,
     turnOrder: [],
     votes: {},
+    voteRevealOrder: [],
+    voteRevealIndex: 0,
     category: null,
     word: null,
     descriptions: [],
+    chatMessages: [],
     eliminatedThisRound: null,
     winner: null,
     timer: null,
-    timerEnd: null
+    timerEnd: null,
+    scores: {}
   };
   rooms.set(roomCode, room);
   return room;
@@ -87,7 +110,9 @@ function getPublicPlayer(player, gameState, requesterId) {
     avatar: player.avatar,
     avatarColor: player.avatarColor,
     alive: player.alive,
-    hasDescribed: player.hasDescribed
+    hasDescribed: player.hasDescribed,
+    stats: player.stats,
+    title: getTitle(player.stats)
   };
   if (gameState === 'gameOver') {
     pub.isImposter = player.isImposter;
@@ -104,6 +129,16 @@ function getPublicRoom(room, requesterId) {
   const requester = room.players.find(p => p.id === requesterId);
   const isImposter = requester?.isImposter && room.state !== 'gameOver';
 
+  // During voteReveal, only show votes that have been revealed
+  let visibleVotes = {};
+  if (room.state === 'voteReveal') {
+    room.voteRevealOrder.slice(0, room.voteRevealIndex).forEach(voterId => {
+      visibleVotes[voterId] = room.votes[voterId];
+    });
+  } else if (room.state === 'roundResult' || room.state === 'gameOver') {
+    visibleVotes = room.votes;
+  }
+
   return {
     code: room.code,
     hostId: room.hostId,
@@ -112,12 +147,16 @@ function getPublicRoom(room, requesterId) {
     currentRound: room.currentRound,
     currentTurnIndex: room.currentTurnIndex,
     turnOrder: room.turnOrder,
-    votes: (room.state === 'roundResult' || room.state === 'gameOver') ? room.votes : {},
+    votes: visibleVotes,
+    voteRevealIndex: room.voteRevealIndex,
+    voteRevealTotal: room.voteRevealOrder.length,
     category: isImposter ? '???' : room.category,
     descriptions: room.descriptions,
+    chatMessages: room.chatMessages,
     eliminatedThisRound: room.eliminatedThisRound,
     winner: room.winner,
     timerEnd: room.timerEnd,
+    scores: room.scores,
     players: room.players.map(p => getPublicPlayer(p, room.state, requesterId))
   };
 }
@@ -147,9 +186,8 @@ function getAlivePlayers(room) {
 }
 
 function startNextTurn(room) {
-  const alive = getAlivePlayers(room);
   if (room.currentTurnIndex >= room.turnOrder.length) {
-    startVoting(room);
+    startDiscussion(room);
     return;
   }
 
@@ -178,6 +216,17 @@ function startNextTurn(room) {
   });
 }
 
+function startDiscussion(room) {
+  room.state = 'discussing';
+  room.chatMessages = [];
+  clearTimer(room);
+  broadcastRoom(room);
+
+  startTimer(room, room.settings.discussionDuration, () => {
+    startVoting(room);
+  });
+}
+
 function startVoting(room) {
   room.state = 'voting';
   room.votes = {};
@@ -185,8 +234,32 @@ function startVoting(room) {
   broadcastRoom(room);
 
   startTimer(room, room.settings.voteDuration, () => {
-    resolveVotes(room);
+    startVoteReveal(room);
   });
+}
+
+function startVoteReveal(room) {
+  clearTimer(room);
+  room.state = 'voteReveal';
+  room.voteRevealOrder = Object.keys(room.votes).sort(() => Math.random() - 0.5);
+  room.voteRevealIndex = 0;
+  broadcastRoom(room);
+
+  revealNextVote(room);
+}
+
+function revealNextVote(room) {
+  if (room.voteRevealIndex >= room.voteRevealOrder.length) {
+    // All votes revealed, resolve after a pause
+    setTimeout(() => resolveVotes(room), 1500);
+    return;
+  }
+
+  room.voteRevealIndex++;
+  broadcastRoom(room);
+
+  // Reveal next vote after delay
+  room.timer = setTimeout(() => revealNextVote(room), 1200);
 }
 
 function resolveVotes(room) {
@@ -234,9 +307,7 @@ function resolveVotes(room) {
       };
 
       if (player.isImposter) {
-        room.state = 'gameOver';
-        room.winner = 'team';
-        broadcastRoom(room);
+        endGame(room, 'team');
         return;
       }
     }
@@ -246,28 +317,53 @@ function resolveVotes(room) {
   const imposterAlive = aliveAfter.some(p => p.isImposter);
 
   if (!imposterAlive) {
-    room.state = 'gameOver';
-    room.winner = 'team';
-    broadcastRoom(room);
+    endGame(room, 'team');
     return;
   }
 
   if (aliveAfter.length <= 2) {
-    room.state = 'gameOver';
-    room.winner = 'imposter';
-    broadcastRoom(room);
+    endGame(room, 'imposter');
     return;
   }
 
   room.currentRound++;
   if (room.currentRound >= room.settings.maxRounds) {
-    room.state = 'gameOver';
-    room.winner = 'imposter';
-    broadcastRoom(room);
+    endGame(room, 'imposter');
     return;
   }
 
   room.state = 'roundResult';
+  broadcastRoom(room);
+}
+
+function endGame(room, winner) {
+  room.state = 'gameOver';
+  room.winner = winner;
+
+  // Update stats and scores
+  room.players.forEach(p => {
+    p.stats.gamesPlayed++;
+    if (!room.scores[p.id]) {
+      room.scores[p.id] = 0;
+    }
+
+    if (winner === 'team' && !p.isImposter) {
+      p.stats.teamWins++;
+      room.scores[p.id] += 10;
+    } else if (winner === 'imposter' && p.isImposter) {
+      p.stats.imposterWins++;
+      room.scores[p.id] += 25; // Imposter gets more for winning
+    } else if (winner === 'team' && p.isImposter) {
+      room.scores[p.id] += 5; // Consolation
+    }
+  });
+
+  // Track votes cast
+  Object.keys(room.votes).forEach(voterId => {
+    const voter = room.players.find(p => p.id === voterId);
+    if (voter) voter.stats.votesCast++;
+  });
+
   broadcastRoom(room);
 }
 
@@ -302,8 +398,11 @@ async function startGame(room) {
   room.state = 'playing';
   room.currentRound = 0;
   room.descriptions = [];
+  room.chatMessages = [];
   room.winner = null;
   room.eliminatedThisRound = null;
+  room.voteRevealOrder = [];
+  room.voteRevealIndex = 0;
 
   const alive = getAlivePlayers(room);
   room.turnOrder = alive.map(p => p.id).sort(() => Math.random() - 0.5);
@@ -343,7 +442,8 @@ io.on('connection', (socket) => {
       alive: true,
       isImposter: false,
       hasDescribed: false,
-      word: null
+      word: null,
+      stats: { gamesPlayed: 0, teamWins: 0, imposterWins: 0, votesCast: 0 }
     });
 
     socket.join(room.code);
@@ -384,6 +484,26 @@ io.on('connection', (socket) => {
     startNextTurn(room);
   });
 
+  socket.on('chat:send', ({ text }, callback) => {
+    const room = [...rooms.values()].find(r => r.players.some(p => p.id === socket.id));
+    if (!room || room.state !== 'discussing') return callback?.({ error: 'Not discussion phase' });
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player.alive) return callback?.({ error: 'You are eliminated' });
+
+    room.chatMessages.push({
+      playerId: socket.id,
+      playerName: player.name,
+      avatar: player.avatar,
+      avatarColor: player.avatarColor,
+      text: text.substring(0, 300),
+      timestamp: Date.now()
+    });
+
+    callback?.({ success: true });
+    broadcastRoom(room);
+  });
+
   socket.on('vote:cast', ({ targetId }, callback) => {
     const room = [...rooms.values()].find(r => r.players.some(p => p.id === socket.id));
     if (!room || room.state !== 'voting') return callback?.({ error: 'Not voting phase' });
@@ -397,7 +517,7 @@ io.on('connection', (socket) => {
 
     const alive = getAlivePlayers(room);
     if (Object.keys(room.votes).length >= alive.length) {
-      resolveVotes(room);
+      startVoteReveal(room);
     } else {
       broadcastRoom(room);
     }
@@ -408,11 +528,14 @@ io.on('connection', (socket) => {
     if (!room || room.state !== 'roundResult') return callback?.({ error: 'Cannot continue' });
 
     room.descriptions = [];
+    room.chatMessages = [];
     room.players.forEach(p => { p.hasDescribed = false; });
     const alive = getAlivePlayers(room);
     room.turnOrder = alive.map(p => p.id).sort(() => Math.random() - 0.5);
     room.currentTurnIndex = 0;
     room.eliminatedThisRound = null;
+    room.voteRevealOrder = [];
+    room.voteRevealIndex = 0;
 
     startNextTurn(room);
     callback?.({ success: true });
@@ -439,8 +562,7 @@ io.on('connection', (socket) => {
         const player = room.players[playerIndex];
         player.alive = false;
         if (player.isImposter) {
-          room.state = 'gameOver';
-          room.winner = 'team';
+          endGame(room, 'team');
           clearTimer(room);
         }
         broadcastRoom(room);

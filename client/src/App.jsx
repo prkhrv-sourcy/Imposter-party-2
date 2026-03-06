@@ -66,6 +66,12 @@ export default function App() {
     });
   }, []);
 
+  const handleChat = useCallback((text) => {
+    socket.emit('chat:send', { text }, (res) => {
+      if (res?.error) setError(res.error);
+    });
+  }, []);
+
   const handleContinue = useCallback(() => {
     if (room?.state === 'gameOver') {
       socket.emit('game:start', null, (res) => {
@@ -112,6 +118,7 @@ export default function App() {
           onDescribe={handleDescribe}
           onVote={handleVote}
           onContinue={handleContinue}
+          onChat={handleChat}
         />
       )}
     </div>

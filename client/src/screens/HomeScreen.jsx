@@ -1,17 +1,25 @@
 import React, { useState } from 'react';
 
+const THEMES = [
+  { id: 'space', name: 'Space Station', icon: '\u{1F680}', desc: 'Among the stars' },
+  { id: 'noir', name: 'Detective Noir', icon: '\u{1F575}\uFE0F', desc: 'Mysterious vibes' },
+  { id: 'jungle', name: 'Jungle Safari', icon: '\u{1F335}', desc: 'Wild & tropical' },
+];
+
 export default function HomeScreen({ onCreateRoom, onJoinRoom, initialRoomCode = '' }) {
   const [mode, setMode] = useState(initialRoomCode ? 'join' : null);
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState(initialRoomCode);
   const [maxRounds, setMaxRounds] = useState(3);
   const [turnDuration, setTurnDuration] = useState(30);
+  const [discussionDuration, setDiscussionDuration] = useState(45);
   const [voteDuration, setVoteDuration] = useState(20);
+  const [theme, setTheme] = useState('space');
   const [error, setError] = useState('');
 
   const handleCreate = () => {
     if (!name.trim()) return setError('Enter your name!');
-    onCreateRoom(name.trim(), { maxRounds, turnDuration, voteDuration });
+    onCreateRoom(name.trim(), { maxRounds, turnDuration, discussionDuration, voteDuration, theme });
   };
 
   const handleJoin = () => {
@@ -95,6 +103,27 @@ export default function HomeScreen({ onCreateRoom, onJoinRoom, initialRoomCode =
 
             {mode === 'create' && (
               <div className="space-y-3 pt-2">
+                {/* Theme picker */}
+                <div>
+                  <label className="text-white/60 text-sm mb-2 block">Theme</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {THEMES.map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setTheme(t.id)}
+                        className={`p-3 rounded-xl text-center transition-all duration-200 ${
+                          theme === t.id
+                            ? 'bg-indigo-500/30 ring-2 ring-indigo-400 scale-105'
+                            : 'bg-white/5 hover:bg-white/10'
+                        }`}
+                      >
+                        <div className="text-2xl">{t.icon}</div>
+                        <div className="text-xs text-white/70 mt-1">{t.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-white/60 text-sm mb-1 flex justify-between">
                     <span>Max Rounds</span>
@@ -114,6 +143,17 @@ export default function HomeScreen({ onCreateRoom, onJoinRoom, initialRoomCode =
                   <input
                     type="range" min="10" max="60" step="5" value={turnDuration}
                     onChange={e => setTurnDuration(+e.target.value)}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-white/60 text-sm mb-1 flex justify-between">
+                    <span>Discussion Time</span>
+                    <span className="text-indigo-400">{discussionDuration}s</span>
+                  </label>
+                  <input
+                    type="range" min="15" max="120" step="5" value={discussionDuration}
+                    onChange={e => setDiscussionDuration(+e.target.value)}
                     className="w-full accent-indigo-500"
                   />
                 </div>
