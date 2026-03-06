@@ -3,7 +3,6 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { generateWordsForCategory } from './gemini.js';
@@ -13,8 +12,6 @@ const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors());
-
-// Serve built client in production
 app.use(express.static(join(__dirname, '..', 'client', 'dist')));
 
 const server = createServer(app);
@@ -23,6 +20,10 @@ const io = new Server(server, {
 });
 
 const rooms = new Map();
+// Maps persistent playerId -> current socketId
+const playerSockets = new Map();
+// Maps socketId -> persistent playerId
+const socketPlayers = new Map();
 
 const AVATARS = [
   'fox', 'cat', 'dog', 'panda', 'koala', 'rabbit', 'owl', 'penguin',
@@ -42,11 +43,11 @@ const AVATAR_COLORS = [
 ];
 
 const TITLES = {
-  detective: { name: 'Master Detective', minWins: 5, color: '#FFD700' },
-  serial: { name: 'Serial Imposter', minImposterWins: 3, color: '#FF4444' },
-  trust: { name: 'Trust Issues', minVotesCast: 20, color: '#9B59B6' },
-  survivor: { name: 'Survivor', minGamesPlayed: 10, color: '#2ECC71' },
-  rookie: { name: 'Rookie', minGamesPlayed: 0, color: '#95A5A6' },
+  detective: { name: 'Master Detective', color: '#FFD700' },
+  serial: { name: 'Serial Imposter', color: '#FF4444' },
+  trust: { name: 'Trust Issues', color: '#9B59B6' },
+  survivor: { name: 'Survivor', color: '#2ECC71' },
+  rookie: { name: 'Rookie', color: '#95A5A6' },
 };
 
 function getTitle(stats) {
@@ -57,20 +58,34 @@ function getTitle(stats) {
   return TITLES.rookie;
 }
 
-function createRoom(hostId, hostName, settings) {
+// Helper: get the socket ID for a player, for emitting
+function getSocketId(playerId) {
+  return playerSockets.get(playerId);
+}
+
+// Helper: find room by player ID
+function findRoomByPlayer(playerId) {
+  for (const room of rooms.values()) {
+    if (room.players.some(p => p.id === playerId)) return room;
+  }
+  return null;
+}
+
+function createRoom(playerId, playerName, settings) {
   const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
   const room = {
     code: roomCode,
-    hostId,
+    hostId: playerId,
     players: [{
-      id: hostId,
-      name: hostName,
+      id: playerId,
+      name: playerName,
       avatar: AVATARS[0],
       avatarColor: AVATAR_COLORS[0],
       alive: true,
       isImposter: false,
       hasDescribed: false,
       word: null,
+      connected: true,
       stats: { gamesPlayed: 0, teamWins: 0, imposterWins: 0, votesCast: 0 }
     }],
     settings: {
@@ -81,7 +96,6 @@ function createRoom(hostId, hostName, settings) {
       voteDuration: settings.voteDuration || 20,
       theme: settings.theme || 'space'
     },
-    // States: lobby, playing, describing, discussing, voting, voteReveal, roundResult, gameOver
     state: 'lobby',
     currentRound: 0,
     currentTurnIndex: 0,
@@ -111,6 +125,7 @@ function getPublicPlayer(player, gameState, requesterId) {
     avatarColor: player.avatarColor,
     alive: player.alive,
     hasDescribed: player.hasDescribed,
+    connected: player.connected,
     stats: player.stats,
     title: getTitle(player.stats)
   };
@@ -129,7 +144,6 @@ function getPublicRoom(room, requesterId) {
   const requester = room.players.find(p => p.id === requesterId);
   const isImposter = requester?.isImposter && room.state !== 'gameOver';
 
-  // During voteReveal, only show votes that have been revealed
   let visibleVotes = {};
   if (room.state === 'voteReveal') {
     room.voteRevealOrder.slice(0, room.voteRevealIndex).forEach(voterId => {
@@ -177,7 +191,10 @@ function startTimer(room, durationSec, callback) {
 
 function broadcastRoom(room) {
   room.players.forEach(p => {
-    io.to(p.id).emit('room:update', getPublicRoom(room, p.id));
+    const sid = getSocketId(p.id);
+    if (sid) {
+      io.to(sid).emit('room:update', getPublicRoom(room, p.id));
+    }
   });
 }
 
@@ -239,21 +256,16 @@ function startVoteReveal(room) {
   room.voteRevealOrder = Object.keys(room.votes).sort(() => Math.random() - 0.5);
   room.voteRevealIndex = 0;
   broadcastRoom(room);
-
   revealNextVote(room);
 }
 
 function revealNextVote(room) {
   if (room.voteRevealIndex >= room.voteRevealOrder.length) {
-    // All votes revealed, resolve after a pause
     setTimeout(() => resolveVotes(room), 1500);
     return;
   }
-
   room.voteRevealIndex++;
   broadcastRoom(room);
-
-  // Reveal next vote after delay
   room.timer = setTimeout(() => revealNextVote(room), 1200);
 }
 
@@ -283,9 +295,7 @@ function resolveVotes(room) {
     }
   });
 
-  if (tie || maxVotes === 0) {
-    eliminated = null;
-  }
+  if (tie || maxVotes === 0) eliminated = null;
 
   room.eliminatedThisRound = null;
 
@@ -300,7 +310,6 @@ function resolveVotes(room) {
         avatarColor: player.avatarColor,
         wasImposter: player.isImposter
       };
-
       if (player.isImposter) {
         endGame(room, 'team');
         return;
@@ -309,13 +318,10 @@ function resolveVotes(room) {
   }
 
   const aliveAfter = getAlivePlayers(room);
-  const imposterAlive = aliveAfter.some(p => p.isImposter);
-
-  if (!imposterAlive) {
+  if (!aliveAfter.some(p => p.isImposter)) {
     endGame(room, 'team');
     return;
   }
-
   if (aliveAfter.length <= 2) {
     endGame(room, 'imposter');
     return;
@@ -335,25 +341,21 @@ function endGame(room, winner) {
   room.state = 'gameOver';
   room.winner = winner;
 
-  // Update stats and scores
   room.players.forEach(p => {
     p.stats.gamesPlayed++;
-    if (!room.scores[p.id]) {
-      room.scores[p.id] = 0;
-    }
+    if (!room.scores[p.id]) room.scores[p.id] = 0;
 
     if (winner === 'team' && !p.isImposter) {
       p.stats.teamWins++;
       room.scores[p.id] += 10;
     } else if (winner === 'imposter' && p.isImposter) {
       p.stats.imposterWins++;
-      room.scores[p.id] += 25; // Imposter gets more for winning
+      room.scores[p.id] += 25;
     } else if (winner === 'team' && p.isImposter) {
-      room.scores[p.id] += 5; // Consolation
+      room.scores[p.id] += 5;
     }
   });
 
-  // Track votes cast
   Object.keys(room.votes).forEach(voterId => {
     const voter = room.players.find(p => p.id === voterId);
     if (voter) voter.stats.votesCast++;
@@ -372,11 +374,7 @@ async function startGame(room) {
     generated = await generateWordsForCategory(room.players.length);
   } catch (err) {
     console.error('Gemini error, using fallback:', err.message);
-    generated = {
-      category: 'Fruits',
-      word: 'Mango',
-      imposterWord: null
-    };
+    generated = { category: 'Fruits', word: 'Mango', imposterWord: null };
   }
 
   room.category = generated.category;
@@ -405,20 +403,43 @@ async function startGame(room) {
 
   broadcastRoom(room);
 
-  setTimeout(() => {
-    startNextTurn(room);
-  }, 3000);
+  setTimeout(() => startNextTurn(room), 3000);
 
   return { success: true };
 }
 
 io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`);
+  const playerId = socket.handshake.auth.playerId;
+  if (!playerId) {
+    socket.disconnect();
+    return;
+  }
+
+  // Register socket mapping
+  playerSockets.set(playerId, socket.id);
+  socketPlayers.set(socket.id, playerId);
+  console.log(`Player connected: ${playerId} (socket ${socket.id})`);
+
+  // Check if this player is already in a room (reconnection)
+  const existingRoom = findRoomByPlayer(playerId);
+  if (existingRoom) {
+    const player = existingRoom.players.find(p => p.id === playerId);
+    if (player) {
+      player.connected = true;
+      console.log(`Player ${playerId} reconnected to room ${existingRoom.code}`);
+      // Send current room state to reconnected player
+      socket.emit('room:update', getPublicRoom(existingRoom, playerId));
+      broadcastRoom(existingRoom);
+    }
+  }
 
   socket.on('room:create', async ({ playerName, settings }, callback) => {
-    const room = createRoom(socket.id, playerName, settings || {});
-    socket.join(room.code);
-    callback({ success: true, room: getPublicRoom(room, socket.id) });
+    // Leave existing room first
+    const oldRoom = findRoomByPlayer(playerId);
+    if (oldRoom) leaveRoom(playerId, oldRoom);
+
+    const room = createRoom(playerId, playerName, settings || {});
+    callback({ success: true, room: getPublicRoom(room, playerId) });
   });
 
   socket.on('room:join', ({ roomCode, playerName }, callback) => {
@@ -426,11 +447,24 @@ io.on('connection', (socket) => {
     if (!room) return callback({ error: 'Room not found' });
     if (room.state !== 'lobby') return callback({ error: 'Game already in progress' });
     if (room.players.length >= room.settings.maxPlayers) return callback({ error: 'Room is full' });
+
+    // Check if already in this room
+    const existing = room.players.find(p => p.id === playerId);
+    if (existing) {
+      existing.connected = true;
+      broadcastRoom(room);
+      return callback({ success: true, room: getPublicRoom(room, playerId) });
+    }
+
     if (room.players.some(p => p.name === playerName)) return callback({ error: 'Name already taken' });
+
+    // Leave old room
+    const oldRoom = findRoomByPlayer(playerId);
+    if (oldRoom) leaveRoom(playerId, oldRoom);
 
     const avatarIndex = room.players.length % AVATARS.length;
     room.players.push({
-      id: socket.id,
+      id: playerId,
       name: playerName,
       avatar: AVATARS[avatarIndex],
       avatarColor: AVATAR_COLORS[avatarIndex],
@@ -438,16 +472,16 @@ io.on('connection', (socket) => {
       isImposter: false,
       hasDescribed: false,
       word: null,
+      connected: true,
       stats: { gamesPlayed: 0, teamWins: 0, imposterWins: 0, votesCast: 0 }
     });
 
-    socket.join(room.code);
     broadcastRoom(room);
-    callback({ success: true, room: getPublicRoom(room, socket.id) });
+    callback({ success: true, room: getPublicRoom(room, playerId) });
   });
 
   socket.on('game:start', async (_, callback) => {
-    const room = [...rooms.values()].find(r => r.hostId === socket.id);
+    const room = [...rooms.values()].find(r => r.hostId === playerId);
     if (!room) return callback({ error: 'You are not a host' });
     if (room.state !== 'lobby' && room.state !== 'gameOver') return callback({ error: 'Game already running' });
 
@@ -456,17 +490,17 @@ io.on('connection', (socket) => {
   });
 
   socket.on('turn:describe', ({ text }, callback) => {
-    const room = [...rooms.values()].find(r => r.players.some(p => p.id === socket.id));
+    const room = findRoomByPlayer(playerId);
     if (!room || room.state !== 'describing') return callback?.({ error: 'Not your turn' });
 
     const currentPlayerId = room.turnOrder[room.currentTurnIndex];
-    if (currentPlayerId !== socket.id) return callback?.({ error: 'Not your turn' });
+    if (currentPlayerId !== playerId) return callback?.({ error: 'Not your turn' });
 
-    const player = room.players.find(p => p.id === socket.id);
+    const player = room.players.find(p => p.id === playerId);
     clearTimer(room);
 
     room.descriptions.push({
-      playerId: socket.id,
+      playerId,
       playerName: player.name,
       text: text.substring(0, 200),
       avatar: player.avatar,
@@ -480,14 +514,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat:send', ({ text }, callback) => {
-    const room = [...rooms.values()].find(r => r.players.some(p => p.id === socket.id));
+    const room = findRoomByPlayer(playerId);
     if (!room || room.state !== 'discussing') return callback?.({ error: 'Not discussion phase' });
 
-    const player = room.players.find(p => p.id === socket.id);
+    const player = room.players.find(p => p.id === playerId);
     if (!player.alive) return callback?.({ error: 'You are eliminated' });
 
     room.chatMessages.push({
-      playerId: socket.id,
+      playerId,
       playerName: player.name,
       avatar: player.avatar,
       avatarColor: player.avatarColor,
@@ -500,14 +534,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('vote:cast', ({ targetId }, callback) => {
-    const room = [...rooms.values()].find(r => r.players.some(p => p.id === socket.id));
+    const room = findRoomByPlayer(playerId);
     if (!room || room.state !== 'voting') return callback?.({ error: 'Not voting phase' });
 
-    const voter = room.players.find(p => p.id === socket.id);
+    const voter = room.players.find(p => p.id === playerId);
     if (!voter.alive) return callback?.({ error: 'You are eliminated' });
-    if (targetId === socket.id) return callback?.({ error: 'Cannot vote for yourself' });
+    if (targetId === playerId) return callback?.({ error: 'Cannot vote for yourself' });
 
-    room.votes[socket.id] = targetId;
+    room.votes[playerId] = targetId;
     callback?.({ success: true });
 
     const alive = getAlivePlayers(room);
@@ -519,7 +553,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('round:continue', (_, callback) => {
-    const room = [...rooms.values()].find(r => r.hostId === socket.id);
+    const room = [...rooms.values()].find(r => r.hostId === playerId);
     if (!room || room.state !== 'roundResult') return callback?.({ error: 'Cannot continue' });
 
     room.descriptions = [];
@@ -537,35 +571,80 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`);
-    for (const [code, room] of rooms) {
-      const playerIndex = room.players.findIndex(p => p.id === socket.id);
-      if (playerIndex === -1) continue;
+    const pid = socketPlayers.get(socket.id);
+    if (!pid) return;
 
-      if (room.state === 'lobby') {
-        room.players.splice(playerIndex, 1);
-        if (room.players.length === 0) {
-          clearTimer(room);
-          rooms.delete(code);
-        } else {
-          if (room.hostId === socket.id) {
-            room.hostId = room.players[0].id;
+    console.log(`Player disconnected: ${pid} (socket ${socket.id})`);
+
+    // Only clean up if this is still the active socket for this player
+    if (playerSockets.get(pid) === socket.id) {
+      playerSockets.delete(pid);
+    }
+    socketPlayers.delete(socket.id);
+
+    const room = findRoomByPlayer(pid);
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === pid);
+    if (!player) return;
+
+    player.connected = false;
+
+    if (room.state === 'lobby') {
+      // In lobby: give them 10 seconds to reconnect before removing
+      setTimeout(() => {
+        // Check if still disconnected
+        if (!playerSockets.has(pid)) {
+          const idx = room.players.findIndex(p => p.id === pid);
+          if (idx !== -1) {
+            room.players.splice(idx, 1);
+            if (room.players.length === 0) {
+              clearTimer(room);
+              rooms.delete(room.code);
+            } else {
+              if (room.hostId === pid) {
+                room.hostId = room.players[0].id;
+              }
+              broadcastRoom(room);
+            }
+          }
+        }
+      }, 10000);
+    } else {
+      // During game: mark disconnected but don't eliminate immediately
+      // Give them 30 seconds to reconnect
+      setTimeout(() => {
+        if (!playerSockets.has(pid)) {
+          player.alive = false;
+          if (player.isImposter) {
+            endGame(room, 'team');
           }
           broadcastRoom(room);
         }
-      } else {
-        const player = room.players[playerIndex];
-        player.alive = false;
-        if (player.isImposter) {
-          endGame(room, 'team');
-          clearTimer(room);
-        }
-        broadcastRoom(room);
-      }
-      break;
+      }, 30000);
     }
+
+    broadcastRoom(room);
   });
 });
+
+function leaveRoom(playerId, room) {
+  const idx = room.players.findIndex(p => p.id === playerId);
+  if (idx === -1) return;
+
+  if (room.state === 'lobby') {
+    room.players.splice(idx, 1);
+    if (room.players.length === 0) {
+      clearTimer(room);
+      rooms.delete(room.code);
+    } else {
+      if (room.hostId === playerId) {
+        room.hostId = room.players[0].id;
+      }
+      broadcastRoom(room);
+    }
+  }
+}
 
 // SPA fallback
 app.get('*', (req, res) => {

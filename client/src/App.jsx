@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { socket } from './socket';
+import { socket, playerId } from './socket';
 import HomeScreen from './screens/HomeScreen';
 import LobbyScreen from './screens/LobbyScreen';
 import GameScreen from './screens/GameScreen';
@@ -109,12 +109,12 @@ export default function App() {
         />
       )}
       {room && room.state === 'lobby' && (
-        <LobbyScreen room={room} myId={socket.id} onStartGame={handleStartGame} />
+        <LobbyScreen room={room} myId={playerId} onStartGame={handleStartGame} />
       )}
       {room && room.state !== 'lobby' && (
         <GameScreen
           room={room}
-          myId={socket.id}
+          myId={playerId}
           onDescribe={handleDescribe}
           onVote={handleVote}
           onContinue={handleContinue}
