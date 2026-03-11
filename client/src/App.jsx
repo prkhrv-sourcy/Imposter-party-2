@@ -1,13 +1,31 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { socket, playerId } from './socket';
+import HubScreen from './screens/HubScreen';
 import HomeScreen from './screens/HomeScreen';
 import LobbyScreen from './screens/LobbyScreen';
 import GameScreen from './screens/GameScreen';
+import FamousFacesHome from './screens/famous-faces/FamousFacesHome';
+import FamousFacesLobby from './screens/famous-faces/FamousFacesLobby';
+import FamousFacesGame from './screens/famous-faces/FamousFacesGame';
+
+function getInitialGame() {
+  const params = new URLSearchParams(window.location.search);
+  const game = params.get('game');
+  if (game) return game;
+  // Backward compat: if ?room= is present without ?game=, assume imposter-party
+  if (params.get('room')) return 'imposter-party';
+  return null;
+}
+
+function getInitialRoomCode() {
+  return new URLSearchParams(window.location.search).get('room') || '';
+}
 
 export default function App() {
   const [room, setRoom] = useState(null);
   const [error, setError] = useState('');
   const [connected, setConnected] = useState(false);
+  const [currentGame, setCurrentGame] = useState(getInitialGame);
 
   useEffect(() => {
     socket.connect();
@@ -16,6 +34,10 @@ export default function App() {
     socket.on('disconnect', () => setConnected(false));
     socket.on('room:update', (updatedRoom) => {
       setRoom(updatedRoom);
+      // Sync currentGame from room's gameType
+      if (updatedRoom?.gameType) {
+        setCurrentGame(updatedRoom.gameType);
+      }
     });
 
     return () => {
@@ -26,6 +48,7 @@ export default function App() {
     };
   }, []);
 
+  // === Imposter Party handlers ===
   const handleCreateRoom = useCallback((name, settings) => {
     socket.emit('room:create', { playerName: name, settings }, (res) => {
       if (res.error) {
@@ -90,6 +113,79 @@ export default function App() {
     }
   }, [room?.state]);
 
+  // === Famous Faces handlers ===
+  const handleFFCreateRoom = useCallback((name, settings) => {
+    socket.emit('ff:room:create', { playerName: name, settings }, (res) => {
+      if (res.error) {
+        setError(res.error);
+      } else {
+        setRoom(res.room);
+        setError('');
+      }
+    });
+  }, []);
+
+  const handleFFJoinRoom = useCallback((name, code) => {
+    socket.emit('ff:room:join', { playerName: name, roomCode: code }, (res) => {
+      if (res.error) {
+        setError(res.error);
+      } else {
+        setRoom(res.room);
+        setError('');
+      }
+    });
+  }, []);
+
+  const handleFFStartGame = useCallback(() => {
+    socket.emit('ff:game:start', null, (res) => {
+      if (res?.error) setError(res.error);
+    });
+  }, []);
+
+  const handleFFGuess = useCallback((text, localCallback) => {
+    socket.emit('ff:guess', { text }, (res) => {
+      if (res?.error) {
+        setError(res.error);
+      } else if (localCallback) {
+        localCallback(res);
+      }
+    });
+  }, []);
+
+  const handleFFContinue = useCallback(() => {
+    socket.emit('ff:continue', null, (res) => {
+      if (res?.error) setError(res.error);
+    });
+  }, []);
+
+  const handleFFPlayAgain = useCallback(() => {
+    socket.emit('ff:game:start', null, (res) => {
+      if (res?.error) setError(res.error);
+    });
+  }, []);
+
+  // === Navigation ===
+  const handleSelectGame = useCallback((gameId) => {
+    setCurrentGame(gameId);
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('game', gameId);
+    window.history.pushState({}, '', url);
+  }, []);
+
+  const handleBackToHub = useCallback(() => {
+    setCurrentGame(null);
+    setRoom(null);
+    const url = new URL(window.location);
+    url.searchParams.delete('game');
+    url.searchParams.delete('room');
+    window.history.pushState({}, '', url);
+  }, []);
+
+  // Figure out which game type we're dealing with
+  const gameType = room?.gameType || null;
+  const isFamousFaces = gameType === 'famous-faces' || currentGame === 'famous-faces';
+
   return (
     <div className="relative">
       {/* Connection indicator */}
@@ -106,18 +202,24 @@ export default function App() {
         </div>
       )}
 
-      {/* Screens */}
-      {!room && (
+      {/* Hub Screen - no room, no game selected */}
+      {!room && !currentGame && (
+        <HubScreen onSelectGame={handleSelectGame} />
+      )}
+
+      {/* Imposter Party flow */}
+      {!room && currentGame === 'imposter-party' && (
         <HomeScreen
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
-          initialRoomCode={new URLSearchParams(window.location.search).get('room') || ''}
+          onBack={handleBackToHub}
+          initialRoomCode={getInitialRoomCode()}
         />
       )}
-      {room && room.state === 'lobby' && (
+      {room && !isFamousFaces && room.state === 'lobby' && (
         <LobbyScreen room={room} myId={playerId} onStartGame={handleStartGame} />
       )}
-      {room && room.state !== 'lobby' && (
+      {room && !isFamousFaces && room.state !== 'lobby' && (
         <GameScreen
           room={room}
           myId={playerId}
@@ -126,6 +228,28 @@ export default function App() {
           onContinue={handleContinue}
           onChat={handleChat}
           onSkipDiscussion={handleSkipDiscussion}
+        />
+      )}
+
+      {/* Famous Faces flow */}
+      {!room && currentGame === 'famous-faces' && (
+        <FamousFacesHome
+          onCreateRoom={handleFFCreateRoom}
+          onJoinRoom={handleFFJoinRoom}
+          onBack={handleBackToHub}
+          initialRoomCode={getInitialRoomCode()}
+        />
+      )}
+      {room && isFamousFaces && room.state === 'lobby' && (
+        <FamousFacesLobby room={room} myId={playerId} onStartGame={handleFFStartGame} />
+      )}
+      {room && isFamousFaces && room.state !== 'lobby' && (
+        <FamousFacesGame
+          room={room}
+          myId={playerId}
+          onGuess={handleFFGuess}
+          onContinue={handleFFContinue}
+          onPlayAgain={handleFFPlayAgain}
         />
       )}
     </div>

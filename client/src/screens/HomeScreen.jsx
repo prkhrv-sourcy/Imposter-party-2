@@ -6,7 +6,7 @@ const THEMES = [
   { id: 'jungle', name: 'Jungle Safari', icon: '\u{1F335}', desc: 'Wild & tropical' },
 ];
 
-export default function HomeScreen({ onCreateRoom, onJoinRoom, initialRoomCode = '' }) {
+export default function HomeScreen({ onCreateRoom, onJoinRoom, onBack, initialRoomCode = '' }) {
   const [mode, setMode] = useState(initialRoomCode ? 'join' : null);
   const [name, setName] = useState('');
   const [roomCode, setRoomCode] = useState(initialRoomCode);
@@ -30,6 +30,14 @@ export default function HomeScreen({ onCreateRoom, onJoinRoom, initialRoomCode =
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="fixed top-4 left-4 text-white/40 hover:text-white text-sm z-50 flex items-center gap-1"
+        >
+          {'\u2190'} Back to Games
+        </button>
+      )}
       <div className="text-center mb-12 animate-bounce-in">
         <h1 className="text-6xl md:text-8xl font-bold mb-2">
           <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">

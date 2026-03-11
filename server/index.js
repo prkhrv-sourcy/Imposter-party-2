@@ -6,6 +6,7 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { generateWordsForCategory } from './gemini.js';
+import { setupFamousFaces, handleFFDisconnect } from './famous-faces.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -420,6 +421,11 @@ io.on('connection', (socket) => {
   socketPlayers.set(socket.id, playerId);
   console.log(`Player connected: ${playerId} (socket ${socket.id})`);
 
+  // Register Famous Faces handlers
+  setupFamousFaces(io, socket, playerId, {
+    rooms, playerSockets, getSocketId, findRoomByPlayer, AVATARS, AVATAR_COLORS
+  });
+
   // Check if this player is already in a room (reconnection)
   const existingRoom = findRoomByPlayer(playerId);
   if (existingRoom) {
@@ -427,9 +433,12 @@ io.on('connection', (socket) => {
     if (player) {
       player.connected = true;
       console.log(`Player ${playerId} reconnected to room ${existingRoom.code}`);
-      // Send current room state to reconnected player
-      socket.emit('room:update', getPublicRoom(existingRoom, playerId));
-      broadcastRoom(existingRoom);
+      // Famous Faces rooms handle their own broadcast format
+      if (existingRoom.gameType !== 'famous-faces') {
+        socket.emit('room:update', getPublicRoom(existingRoom, playerId));
+        broadcastRoom(existingRoom);
+      }
+      // FF reconnection is handled by the ff module's broadcast via room:update event
     }
   }
 
@@ -593,6 +602,12 @@ io.on('connection', (socket) => {
 
     const room = findRoomByPlayer(pid);
     if (!room) return;
+
+    // Famous Faces rooms have their own disconnect handling
+    if (room.gameType === 'famous-faces') {
+      handleFFDisconnect(pid, room, io, getSocketId, rooms);
+      return;
+    }
 
     const player = room.players.find(p => p.id === pid);
     if (!player) return;
