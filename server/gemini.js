@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 const FALLBACK_CATEGORIES = [
   { category: 'Fruits', words: ['Mango', 'Banana', 'Strawberry', 'Pineapple', 'Watermelon', 'Kiwi'] },
@@ -22,8 +22,7 @@ export async function generateWordsForCategory(playerCount) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `You are a word game host. Pick a fun, interesting category and one specific word from that category for a party game. The word should be something most people know but specific enough to describe with clues.
 
@@ -32,8 +31,11 @@ Return ONLY valid JSON in this exact format, no markdown:
 
 Be creative! Pick unusual but fun categories like "Things in a Haunted House", "Breakfast Foods Around the World", "Things That Glow", "Cartoon Characters", etc.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const result = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    const text = result.text.trim();
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
 
@@ -43,7 +45,7 @@ Be creative! Pick unusual but fun categories like "Things in a Haunted House", "
       imposterWord: null
     };
   } catch (err) {
-    console.error('Gemini API error:', err.message);
+    console.error('[Word Game] Gemini error, falling back to presets:', err);
     return useFallback();
   }
 }

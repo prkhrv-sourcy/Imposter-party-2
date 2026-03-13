@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 const FALLBACK_ROUNDS = [
   {
@@ -151,6 +151,356 @@ const FALLBACK_ROUNDS = [
       "I'm Hollywood's most iconic blonde, famous for 'Some Like It Hot'"
     ]
   },
+  {
+    person: 'Snoop Dogg',
+    hints: [
+      "I turned 'izzle' into an entire dialect",
+      "I went from gangsta rap to cooking shows and nobody batted an eye",
+      "I carried the Olympic torch while looking absolutely fabulous",
+      "My friendship with a white-haired TV cook is the most unlikely bromance ever",
+      "I'm a Long Beach rapper who loves gin and juice and says 'fo shizzle'"
+    ]
+  },
+  {
+    person: 'Frida Kahlo',
+    hints: [
+      "My eyebrows have more fans than most artists' entire portfolios",
+      "I turned pain into paint and made suffering look beautiful",
+      "My husband was also a famous painter but somehow even more dramatic than me",
+      "A bus accident changed my life and I spent months painting from my bed",
+      "I'm a Mexican artist famous for surreal self-portraits and a unibrow"
+    ]
+  },
+  {
+    person: 'Muhammad Ali',
+    hints: [
+      "I floated and stung — turns out I was describing my fighting style, not a pool party",
+      "I changed my name and the world had to deal with it",
+      "I once trash-talked so well my opponent was defeated before the bell rang",
+      "I refused to go to war and lost my title but won respect",
+      "I'm The Greatest — a heavyweight boxing champion who could rhyme as well as fight"
+    ]
+  },
+  {
+    person: 'Adele',
+    hints: [
+      "I have a habit of naming my work after my age like a time capsule",
+      "I made an entire generation ugly cry in their cars",
+      "I called from the other side and somehow everyone picked up",
+      "I took a long break and came back like I never left — with a massive album",
+      "I'm a British singer known for 'Hello', 'Rolling in the Deep', and making people weep"
+    ]
+  },
+  {
+    person: 'Napoleon Bonaparte',
+    hints: [
+      "People keep saying I was short but actually I was average height — it was propaganda!",
+      "I put a crown on my own head because nobody else was worthy of doing it",
+      "A winter vacation to Russia turned out to be a terrible idea",
+      "I got exiled, came back, then got exiled AGAIN to a smaller island",
+      "I'm a French emperor who conquered most of Europe and met my end at Waterloo"
+    ]
+  },
+  {
+    person: 'Bob Marley',
+    hints: [
+      "I told people not to worry about a thing and it became everyone's life motto",
+      "I got shot and performed a concert two days later like it was nothing",
+      "My hairstyle became a symbol of an entire movement",
+      "I made a tiny Caribbean island the music capital of the world",
+      "I'm a Jamaican reggae legend who sang 'One Love' and 'No Woman, No Cry'"
+    ]
+  },
+  {
+    person: 'Mark Zuckerberg',
+    hints: [
+      "I rated people's attractiveness in college and somehow that became a trillion-dollar company",
+      "I got played by Jesse Eisenberg and honestly it was pretty accurate",
+      "My wardrobe is 90% the same gray t-shirt",
+      "I renamed my entire company after a virtual world nobody asked for",
+      "I'm the founder of Facebook who started it from a Harvard dorm room"
+    ]
+  },
+  {
+    person: 'Serena Williams',
+    hints: [
+      "My sister and I turned a sport known for country clubs into a family business",
+      "I've won more Grand Slams than most countries have tennis courts",
+      "I once designed a catsuit that got banned from the French Open",
+      "I served a tennis ball so hard it broke speed records",
+      "I'm one of the greatest tennis players ever, with 23 Grand Slam titles"
+    ]
+  },
+  {
+    person: 'Walt Disney',
+    hints: [
+      "I built an empire on a mouse — and not the computer kind",
+      "I got fired from a newspaper for 'lacking imagination' — that aged well",
+      "I froze... my legacy in theme parks and animated movies. Rumors about the other freezing are false",
+      "I created a magic kingdom where adults pay hundreds of dollars to wear mouse ears",
+      "I'm the man behind Mickey Mouse, Disneyland, and the happiest place on earth"
+    ]
+  },
+  {
+    person: 'Lionel Messi',
+    hints: [
+      "I needed growth hormone shots as a kid — turned out to be a pretty good investment",
+      "I had to leave my home country as a teenager to join a club in Catalonia",
+      "I finally won the one trophy everyone said I'd never get — in a desert",
+      "I have more Ballon d'Or awards than most teams have trophies",
+      "I'm an Argentine footballer, considered the GOAT, who won the 2022 World Cup"
+    ]
+  },
+  {
+    person: 'Lady Gaga',
+    hints: [
+      "I wore a dress made of meat and PETA had a meltdown",
+      "I was born this way but I definitely was not born with that name",
+      "I went from pop star to Oscar-nominated actress and back again",
+      "I fell off a stage with a fan and turned it into a viral moment",
+      "I'm a pop icon named after a Queen song, known for 'Bad Romance' and wild outfits"
+    ]
+  },
+  {
+    person: 'Nikola Tesla',
+    hints: [
+      "I was in a current war and I won — alternating between genius and madness",
+      "I fell in love with a pigeon and I'm not even embarrassed about it",
+      "A billionaire named his car company after me centuries later",
+      "I had a rivalry with Edison that makes Marvel rivalries look boring",
+      "I'm a Serbian-American inventor who pioneered AC electricity and wireless technology"
+    ]
+  },
+  {
+    person: 'Kim Kardashian',
+    hints: [
+      "I broke the internet with a magazine cover and a bottle of champagne",
+      "I started as someone's closet organizer and ended up a billionaire",
+      "My family turned cameras following us around into a media empire",
+      "I'm studying law which surprised literally everyone including me",
+      "I'm a reality TV star from the Kardashian family, married to Kanye, famous for... being famous"
+    ]
+  },
+  {
+    person: 'Charles Darwin',
+    hints: [
+      "I took a cruise and it changed biology forever",
+      "I stared at finch beaks for way too long and had a eureka moment",
+      "My big idea made a lot of religious people very uncomfortable",
+      "I waited 20 years to publish because I knew the drama it would cause",
+      "I'm the British naturalist who wrote 'On the Origin of Species' and proposed evolution by natural selection"
+    ]
+  },
+  {
+    person: 'Drake',
+    hints: [
+      "I started from the bottom and apparently I'm still reminding everyone",
+      "I was a Canadian teenager in a wheelchair on TV before I picked up a mic",
+      "My dance moves became memes and honestly I leaned into it",
+      "I have beef with basically every other rapper at some point",
+      "I'm a Toronto rapper and former Degrassi actor known for 'Hotline Bling' and 'God's Plan'"
+    ]
+  },
+  {
+    person: 'Freddie Mercury',
+    hints: [
+      "I asked if this is real life or just fantasy, and people are still debating",
+      "I had a vocal range so big it needed its own zip code",
+      "I performed at Live Aid and it's still considered the greatest concert ever",
+      "My mustache is more iconic than most people's entire careers",
+      "I'm the legendary frontman of Queen who sang 'Bohemian Rhapsody'"
+    ]
+  },
+  {
+    person: 'Pablo Picasso',
+    hints: [
+      "I looked at faces and thought 'what if the eyes were on the same side?'",
+      "I had a blue period, and no, I don't mean I was sad about laundry",
+      "I could draw like Raphael at age 12 but spent my life learning to draw like a child",
+      "I painted a bombing and it became the most powerful anti-war statement in art history",
+      "I'm a Spanish artist who co-founded Cubism and painted 'Guernica'"
+    ]
+  },
+  {
+    person: 'Rihanna',
+    hints: [
+      "I haven't released an album in years but my makeup empire keeps printing money",
+      "I sing about umbrellas but I look best in the rain without one",
+      "I showed up to the Super Bowl halftime show visibly pregnant and still killed it",
+      "I went from Barbados to Billionaire status",
+      "I'm a Barbadian singer known for 'Umbrella' and 'Diamonds', and founder of Fenty Beauty"
+    ]
+  },
+  {
+    person: 'Isaac Newton',
+    hints: [
+      "An apple fell on my head and instead of eating it, I invented physics",
+      "I beefed with Leibniz over who invented calculus — the original academic drama",
+      "I stuck a needle in my own eye for science and wrote about it casually",
+      "I ran the Royal Mint and personally hunted down counterfeiters like a detective",
+      "I'm the English scientist who discovered gravity and wrote 'Principia Mathematica'"
+    ]
+  },
+  {
+    person: 'Arnold Schwarzenegger',
+    hints: [
+      "I said I'd be back so many times it became my entire personality",
+      "I went from bodybuilding to movies to running the most populous US state",
+      "My last name is a spelling bee's worst nightmare",
+      "I was sent from the future to terminate things and then became a kindergarten cop",
+      "I'm an Austrian-American actor and former California governor known for The Terminator"
+    ]
+  },
+  {
+    person: 'Cardi B',
+    hints: [
+      "I went from stripping to rapping to Congress-level political commentary",
+      "I threw a shoe at a fashion event and it became front page news",
+      "OKURRR became a sound that haunts people's dreams",
+      "I was a reality TV star before my rap career even started",
+      "I'm a Bronx rapper known for 'Bodak Yellow' and 'WAP' who used to be on Love & Hip Hop"
+    ]
+  },
+  {
+    person: 'Vincent van Gogh',
+    hints: [
+      "I gave someone a piece of my mind — and my ear — as a gift",
+      "I only sold one painting while alive but now they're worth hundreds of millions",
+      "I painted the night sky so beautifully that it ended up on everyone's dorm room wall",
+      "I ate yellow paint because I thought it would put sunshine inside me",
+      "I'm a Dutch post-impressionist painter known for 'Starry Night' and cutting off my ear"
+    ]
+  },
+  {
+    person: 'Jeff Bezos',
+    hints: [
+      "I started selling books in a garage and ended up owning... everything",
+      "I went to space in something that looked very suspicious",
+      "I got so rich I bought a newspaper just to have something to read",
+      "My smile got suspiciously bigger as my net worth grew",
+      "I'm the founder of Amazon and one of the richest people on Earth"
+    ]
+  },
+  {
+    person: 'Princess Diana',
+    hints: [
+      "I wore a revenge dress and invented an entire fashion genre",
+      "My wedding was watched by 750 million people — no pressure",
+      "I shook hands with AIDS patients when nobody else would",
+      "My sons are a prince and a prince who moved to California",
+      "I'm the People's Princess, first wife of King Charles III"
+    ]
+  },
+  {
+    person: 'Usain Bolt',
+    hints: [
+      "I celebrated before crossing the finish line and STILL broke the world record",
+      "My surname is literally what I do — run fast like electricity",
+      "I eat chicken nuggets before Olympic finals and still win gold",
+      "I posed for a photo mid-race and it became the most iconic sports image ever",
+      "I'm a Jamaican sprinter, the fastest human ever, who ran 100m in 9.58 seconds"
+    ]
+  },
+  {
+    person: 'Julia Roberts',
+    hints: [
+      "My smile is literally insured and worth every penny",
+      "I was a pretty woman on Hollywood Boulevard and Richard Gere picked me up in a limo",
+      "I ran away from weddings in multiple movies but eventually got married in real life",
+      "I won an Oscar and thanked approximately 47 people in my speech",
+      "I'm America's Sweetheart, known for 'Pretty Woman' and that megawatt smile"
+    ]
+  },
+  {
+    person: 'Genghis Khan',
+    hints: [
+      "My family tree is less of a tree and more of an entire forest across Asia",
+      "I turned horseback archery into a method of world domination",
+      "About 1 in 200 men alive today might be related to me — I was busy",
+      "I united warring nomadic tribes and built the largest land empire in history",
+      "I'm the Mongol emperor who conquered half of the known world in the 13th century"
+    ]
+  },
+  {
+    person: 'David Bowie',
+    hints: [
+      "I came from outer space — well, I played someone who did",
+      "My eyes were different colors because of a schoolyard fight, not genetics",
+      "I reinvented myself so many times even I lost count",
+      "I was a Ziggy and a Thin White Duke and a Goblin King",
+      "I'm a British rock icon known for 'Space Oddity', 'Heroes', and constantly changing personas"
+    ]
+  },
+  {
+    person: 'Morgan Freeman',
+    hints: [
+      "My voice could narrate a grocery list and win an Oscar for it",
+      "I've played God twice and honestly? Believable casting",
+      "I have more freckles than most connect-the-dot puzzles",
+      "I went from Electric Company to Shawshank and drove Miss Daisy along the way",
+      "I'm an American actor known for my narration voice, 'The Shawshank Redemption', and playing God"
+    ]
+  },
+  {
+    person: 'Billie Eilish',
+    hints: [
+      "I whisper into microphones and somehow fill entire arenas",
+      "I wore baggy clothes so people would stop talking about my body — they talked about the clothes instead",
+      "I made a hit song in my brother's bedroom and it went platinum",
+      "I'm the youngest person to sweep the big four Grammy categories",
+      "I'm a Gen Z pop star known for 'Bad Guy', green hair (sometimes), and whispery vocals"
+    ]
+  },
+  {
+    person: 'Neil Armstrong',
+    hints: [
+      "I took a small step and turned it into the most quoted sentence in human history",
+      "My commute to work was about 240,000 miles one way",
+      "I was so calm during an emergency landing that my heart rate barely changed",
+      "Conspiracy theorists think my biggest achievement was filmed in a studio",
+      "I'm the first person to walk on the Moon during Apollo 11 in 1969"
+    ]
+  },
+  {
+    person: 'Keanu Reeves',
+    hints: [
+      "I once sat alone on a bench eating a sandwich and the internet made me a meme of sadness",
+      "I gave away millions from my movie salary to the special effects crew",
+      "I dodged bullets in slow motion and it changed action movies forever",
+      "I was excellent in a phone booth time machine before I became an assassin over a puppy",
+      "I'm the actor behind Neo in The Matrix and John Wick, known as the internet's nicest person"
+    ]
+  },
+  {
+    person: 'Malala Yousafzai',
+    hints: [
+      "I got shot for wanting to go to school and then went to Oxford",
+      "I became the youngest Nobel Prize winner and I wasn't even old enough to vote",
+      "I wrote a blog under a fake name that changed the world",
+      "A bus ride home nearly ended my life but started a global movement",
+      "I'm a Pakistani activist for girls' education who survived a Taliban attack"
+    ]
+  },
+  {
+    person: 'Elvis Presley',
+    hints: [
+      "My hips were so dangerous they only showed me from the waist up on TV",
+      "I lived in a mansion named after my girlfriend's estate — Graceland",
+      "People keep spotting me in grocery stores decades after I supposedly died",
+      "I served in the army and somehow got more famous",
+      "I'm the King of Rock and Roll, known for 'Hound Dog' and a white jumpsuit"
+    ]
+  },
+  {
+    person: 'Emma Watson',
+    hints: [
+      "I've been casting spells since I was 11 and graduated to the United Nations",
+      "I hid books around the subway for strangers to find",
+      "My character punched a bully and it was the most satisfying movie moment of the 2000s",
+      "I went from a magical school to an Ivy League one",
+      "I'm the actress who played Hermione Granger in Harry Potter and became a UN Women Goodwill Ambassador"
+    ]
+  },
 ];
 
 let usedFallbackIndices = new Set();
@@ -164,8 +514,7 @@ async function generateFamousPerson() {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `You are a game host for "Famous Faces" — a party game where players guess famous people from funny, cryptic hints.
 
@@ -185,8 +534,11 @@ Each hint should be 1-2 sentences max. Write them in first person as if the famo
 Return ONLY valid JSON, no markdown:
 {"person": "Full Name", "hints": ["hint1", "hint2", "hint3", "hint4", "hint5"]}`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
+    const result = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    const text = result.text.trim();
     const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
 
@@ -196,7 +548,7 @@ Return ONLY valid JSON, no markdown:
 
     return { person: parsed.person, hints: parsed.hints };
   } catch (err) {
-    console.error('Gemini API error for Famous Faces:', err.message);
+    console.error('[Famous Faces] Gemini error, falling back to presets:', err);
     return useFallback();
   }
 }
