@@ -709,6 +709,50 @@ function createFFRoom(playerId, playerName, settings, { rooms, AVATARS, AVATAR_C
   return room;
 }
 
+// Build answer blanks with progressively revealed letters
+// Returns array of words, each word is array of { letter, revealed }
+function buildAnswerBlanks(answer, hintsRevealed, roomCode) {
+  const words = answer.split(' ');
+
+  // Determine reveal percentage based on hints
+  // Hint 1-2: no letters, Hint 3: ~20%, Hint 4: ~40%, Hint 5: ~60%
+  const revealPercent = hintsRevealed <= 2 ? 0
+    : hintsRevealed === 3 ? 0.2
+    : hintsRevealed === 4 ? 0.4
+    : 0.6;
+
+  if (revealPercent === 0) {
+    // Just return blanks with word lengths
+    return words.map(word => word.split('').map(() => null));
+  }
+
+  // Use roomCode as seed for consistent reveals across broadcasts
+  // (so the same letters stay revealed, not random new ones each time)
+  return words.map((word, wi) => {
+    const letters = word.split('');
+    const totalToReveal = Math.max(1, Math.floor(letters.length * revealPercent));
+
+    // Deterministic "random" indices based on roomCode + word index
+    const seed = hashCode(roomCode + wi);
+    const indices = letters
+      .map((_, i) => i)
+      .sort((a, b) => ((seed * (a + 1) * 31) % 997) - ((seed * (b + 1) * 31) % 997));
+
+    const revealSet = new Set(indices.slice(0, totalToReveal));
+
+    return letters.map((ch, i) => revealSet.has(i) ? ch : null);
+  });
+}
+
+function hashCode(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
 function getPublicFFRoom(room, requesterId) {
   const showAnswer = room.state === 'roundResult' || room.state === 'gameOver';
   const hasGuessed = !!room.correctGuesses[requesterId];
@@ -721,6 +765,9 @@ function getPublicFFRoom(room, requesterId) {
     state: room.state,
     currentRound: room.currentRound,
     answer: showAnswer ? room.answer : (hasGuessed ? room.answer : null),
+    answerBlanks: room.answer
+      ? buildAnswerBlanks(room.answer, room.hintsRevealed, room.code)
+      : [],
     hints: room.hints.slice(0, room.hintsRevealed),
     totalHints: 5,
     hintsRevealed: room.hintsRevealed,

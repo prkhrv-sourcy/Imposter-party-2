@@ -156,6 +156,36 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
                 </p>
               </div>
 
+              {/* Answer blanks - hangman style with progressive letter reveals */}
+              {room.answerBlanks && room.answerBlanks.length > 0 && !hasGuessedCorrectly && (
+                <div className="glass rounded-2xl p-4 text-center">
+                  <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+                    {room.answerBlanks.map((word, wi) => (
+                      <div key={wi} className="flex gap-1">
+                        {word.map((letter, li) => (
+                          <div
+                            key={li}
+                            className={`w-5 h-7 border-b-2 flex items-end justify-center transition-all duration-500
+                              ${letter ? 'border-amber-400' : 'border-amber-400/30'}`}
+                          >
+                            {letter ? (
+                              <span className="text-amber-300 text-sm font-bold mb-0.5 animate-fade-in">
+                                {letter.toUpperCase()}
+                              </span>
+                            ) : (
+                              <span className="text-white/10 text-xs mb-0.5">&nbsp;</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-white/25 text-xs mt-2">
+                    {room.answerBlanks.reduce((a, w) => a + w.length, 0)} letters, {room.answerBlanks.length} {room.answerBlanks.length === 1 ? 'word' : 'words'}
+                  </p>
+                </div>
+              )}
+
               {/* Hints */}
               <div className="space-y-3">
                 {Array.from({ length: totalHints }).map((_, i) => (
