@@ -505,13 +505,17 @@ const FALLBACK_ROUNDS = [
 
 let usedFallbackIndices = new Set();
 
-async function generateFamousPerson() {
-  const apiKey = process.env.GEMINI_API_KEY;
+// Pre-fetch queue: keyed by room code, each holds an array of pre-generated rounds
+const prefetchQueue = new Map();
+const PREFETCH_TARGET = 3; // Keep this many rounds buffered ahead
 
-  if (!apiKey) {
-    console.log('No GEMINI_API_KEY set, using fallback for Famous Faces');
-    return useFallback();
-  }
+async function generateFamousPersonFromGemini(usedPersons) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const avoidList = usedPersons.length > 0
+    ? `\n\nIMPORTANT: Do NOT pick any of these people (already used): ${usedPersons.join(', ')}`
+    : '';
 
   try {
     const ai = new GoogleGenAI({ apiKey });
@@ -532,7 +536,7 @@ Rules for hints:
 Each hint should be 1-2 sentences max. Write them in first person as if the famous person is describing themselves.
 
 Return ONLY valid JSON, no markdown:
-{"person": "Full Name", "hints": ["hint1", "hint2", "hint3", "hint4", "hint5"]}`;
+{"person": "Full Name", "hints": ["hint1", "hint2", "hint3", "hint4", "hint5"]}${avoidList}`;
 
     const result = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -546,24 +550,97 @@ Return ONLY valid JSON, no markdown:
       throw new Error('Invalid response format');
     }
 
-    return { person: parsed.person, hints: parsed.hints };
+    return { person: parsed.person, hints: parsed.hints, source: 'gemini' };
   } catch (err) {
-    console.error('[Famous Faces] Gemini error, falling back to presets:', err);
-    return useFallback();
+    console.error('[Famous Faces] Gemini error:', err.message);
+    return null;
   }
 }
 
-function useFallback() {
-  // Try to avoid repeats
-  if (usedFallbackIndices.size >= FALLBACK_ROUNDS.length) {
-    usedFallbackIndices.clear();
+function useFallback(usedPersons) {
+  // Filter out already-used fallbacks
+  const available = FALLBACK_ROUNDS
+    .map((r, i) => ({ ...r, idx: i }))
+    .filter(r => !usedPersons.includes(r.person.toLowerCase()));
+
+  if (available.length === 0) {
+    // All used, reset and pick any
+    const idx = Math.floor(Math.random() * FALLBACK_ROUNDS.length);
+    return { ...FALLBACK_ROUNDS[idx], source: 'fallback' };
   }
-  let idx;
-  do {
-    idx = Math.floor(Math.random() * FALLBACK_ROUNDS.length);
-  } while (usedFallbackIndices.has(idx));
-  usedFallbackIndices.add(idx);
-  return { ...FALLBACK_ROUNDS[idx] };
+
+  const pick = available[Math.floor(Math.random() * available.length)];
+  return { person: pick.person, hints: pick.hints, source: 'fallback' };
+}
+
+async function generateFamousPerson(usedPersons = []) {
+  // Try Gemini first, fall back to local
+  const result = await generateFamousPersonFromGemini(usedPersons);
+  if (result && !usedPersons.includes(result.person.toLowerCase())) {
+    return result;
+  }
+  return useFallback(usedPersons);
+}
+
+// Get or create the prefetch state for a room
+function getRoomQueue(roomCode) {
+  if (!prefetchQueue.has(roomCode)) {
+    prefetchQueue.set(roomCode, { queue: [], usedPersons: [], filling: false });
+  }
+  return prefetchQueue.get(roomCode);
+}
+
+// Fill the prefetch queue in the background
+function fillQueue(roomCode) {
+  const state = getRoomQueue(roomCode);
+  if (state.filling) return;
+  const needed = PREFETCH_TARGET - state.queue.length;
+  if (needed <= 0) return;
+
+  state.filling = true;
+  // Fire off generation calls in parallel
+  const promises = [];
+  for (let i = 0; i < needed; i++) {
+    promises.push(
+      generateFamousPerson(state.usedPersons).then(result => {
+        // Double-check no dup snuck in
+        if (!state.usedPersons.includes(result.person.toLowerCase())) {
+          state.usedPersons.push(result.person.toLowerCase());
+          state.queue.push(result);
+        }
+      }).catch(err => {
+        console.error('[Famous Faces] Prefetch error:', err.message);
+      })
+    );
+  }
+  Promise.all(promises).finally(() => {
+    state.filling = false;
+    console.log(`[Famous Faces] Queue for ${roomCode}: ${state.queue.length} rounds buffered`);
+  });
+}
+
+// Pull next round from queue, or generate on-demand if queue is empty
+async function getNextRound(roomCode) {
+  const state = getRoomQueue(roomCode);
+
+  if (state.queue.length > 0) {
+    const round = state.queue.shift();
+    // Refill in background
+    fillQueue(roomCode);
+    return round;
+  }
+
+  // Queue empty — generate on demand
+  const result = await generateFamousPerson(state.usedPersons);
+  state.usedPersons.push(result.person.toLowerCase());
+  // Start filling for next rounds
+  fillQueue(roomCode);
+  return result;
+}
+
+// Clean up prefetch state when room is destroyed
+export function cleanupFFPrefetch(roomCode) {
+  prefetchQueue.delete(roomCode);
 }
 
 function isCorrectGuess(guess, answer) {
@@ -625,6 +702,10 @@ function createFFRoom(playerId, playerName, settings, { rooms, AVATARS, AVATAR_C
     hintTimers: [],
   };
   rooms.set(roomCode, room);
+
+  // Start pre-fetching rounds as soon as room is created
+  fillQueue(roomCode);
+
   return room;
 }
 
@@ -688,7 +769,7 @@ function calculateScore(hintsAtGuess, timeRemaining) {
 }
 
 async function startFFRound(room, io, getSocketId) {
-  const roundData = await generateFamousPerson();
+  const roundData = await getNextRound(room.code);
   room.answer = roundData.person;
   room.hints = roundData.hints;
   room.hintsRevealed = 1;
@@ -770,6 +851,7 @@ export function setupFamousFaces(io, socket, playerId, shared) {
       room.players.splice(idx, 1);
       if (room.players.length === 0) {
         clearFFTimers(room);
+        cleanupFFPrefetch(room.code);
         rooms.delete(room.code);
       } else {
         if (room.hostId === pid) {
@@ -834,10 +916,18 @@ export function setupFamousFaces(io, socket, playerId, shared) {
       room.currentRound = 0;
     }
 
+    // Reset prefetch queue on new game
+    if (room.state === 'gameOver') {
+      cleanupFFPrefetch(room.code);
+    }
+
     // Initialize scores
     room.players.forEach(p => {
       if (!room.scores[p.id]) room.scores[p.id] = 0;
     });
+
+    // Start pre-fetching future rounds in background
+    fillQueue(room.code);
 
     await startFFRound(room, io, getSocketId);
     callback({ success: true });
@@ -929,6 +1019,7 @@ export function handleFFDisconnect(playerId, room, io, getSocketId, rooms) {
           room.players.splice(idx, 1);
           if (room.players.length === 0) {
             clearFFTimers(room);
+            cleanupFFPrefetch(room.code);
             rooms.delete(room.code);
           } else {
             if (room.hostId === playerId) {
