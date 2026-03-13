@@ -645,11 +645,32 @@ export function cleanupFFPrefetch(roomCode) {
 
 function isCorrectGuess(guess, answer) {
   const normalize = s => s.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '');
+
+  // Normalize roman numerals to digits and vice versa for flexible matching
+  const romanToDigit = s => s
+    .replace(/\bviii\b/g, '8').replace(/\bvii\b/g, '7').replace(/\bvi\b/g, '6')
+    .replace(/\biv\b/g, '4').replace(/\bv\b/g, '5')
+    .replace(/\biii\b/g, '3').replace(/\bii\b/g, '2').replace(/\bi\b/g, '1')
+    .replace(/\bix\b/g, '9').replace(/\bx\b/g, '10');
+  const digitToRoman = s => s
+    .replace(/\b10\b/g, 'x').replace(/\b9\b/g, 'ix').replace(/\b8\b/g, 'viii')
+    .replace(/\b7\b/g, 'vii').replace(/\b6\b/g, 'vi').replace(/\b5\b/g, 'v')
+    .replace(/\b4\b/g, 'iv').replace(/\b3\b/g, 'iii').replace(/\b2\b/g, 'ii')
+    .replace(/\b1\b/g, 'i');
+
+  const matchesAny = (g, a) => {
+    if (g === a) return true;
+    // Try with roman→digit normalization on both sides
+    if (romanToDigit(g) === romanToDigit(a)) return true;
+    if (digitToRoman(g) === digitToRoman(a)) return true;
+    return false;
+  };
+
   const g = normalize(guess);
   const a = normalize(answer);
 
   if (!g || g.length < 2) return false;
-  if (g === a) return true;
+  if (matchesAny(g, a)) return true;
 
   // Last name match
   const parts = a.split(/\s+/);
@@ -664,7 +685,7 @@ function isCorrectGuess(guess, answer) {
   // Remove spaces and check
   const gNoSpace = g.replace(/\s+/g, '');
   const aNoSpace = a.replace(/\s+/g, '');
-  if (gNoSpace === aNoSpace) return true;
+  if (matchesAny(gNoSpace, aNoSpace)) return true;
 
   return false;
 }
@@ -715,11 +736,10 @@ function buildAnswerBlanks(answer, hintsRevealed, roomCode) {
   const words = answer.split(' ');
 
   // Determine reveal percentage based on hints
-  // Hint 1-2: no letters, Hint 3: ~20%, Hint 4: ~40%, Hint 5: ~60%
-  const revealPercent = hintsRevealed <= 2 ? 0
-    : hintsRevealed === 3 ? 0.2
-    : hintsRevealed === 4 ? 0.4
-    : 0.6;
+  // Hint 1-3: no letters, Hint 4: ~15%, Hint 5: ~30%
+  const revealPercent = hintsRevealed <= 3 ? 0
+    : hintsRevealed === 4 ? 0.15
+    : 0.3;
 
   if (revealPercent === 0) {
     // Just return blanks with word lengths
@@ -732,11 +752,18 @@ function buildAnswerBlanks(answer, hintsRevealed, roomCode) {
     const letters = word.split('');
     const totalToReveal = Math.max(1, Math.floor(letters.length * revealPercent));
 
-    // Deterministic "random" indices based on roomCode + word index
+    // Deterministic shuffle of indices using roomCode + word index as seed
     const seed = hashCode(roomCode + wi);
+    const scramble = i => {
+      // Mix seed and index thoroughly to avoid clustering
+      let h = seed ^ (i * 2654435761);
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^ (h >>> 16)) >>> 0;
+    };
     const indices = letters
       .map((_, i) => i)
-      .sort((a, b) => ((seed * (a + 1) * 31) % 997) - ((seed * (b + 1) * 31) % 997));
+      .sort((a, b) => scramble(a) - scramble(b));
 
     const revealSet = new Set(indices.slice(0, totalToReveal));
 
