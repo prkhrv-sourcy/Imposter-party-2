@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import Avatar from '../../components/Avatar';
+import { getTheme } from './themes';
 
 export default function FamousFacesLobby({ room, myId, onStartGame }) {
   const isHost = room.hostId === myId;
   const canStart = room.players.length >= 2;
   const [copied, setCopied] = useState(false);
+  const theme = getTheme(room.settings.theme);
 
   const shareLink = `${window.location.origin}?game=famous-faces&room=${room.code}`;
 
@@ -100,6 +102,13 @@ export default function FamousFacesLobby({ room, myId, onStartGame }) {
       </div>
 
       <div className="glass rounded-2xl p-4 w-full max-w-md text-center mb-6">
+        <div className="flex items-center justify-center gap-2 mb-3 pb-3 border-b border-white/10">
+          <span className="text-white/40 text-sm">Theme</span>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/20">
+            <span className="text-base leading-none">{theme.emoji}</span>
+            <span className="text-sm font-semibold text-amber-300">{theme.label}</span>
+          </span>
+        </div>
         <div className="grid grid-cols-3 gap-3 text-sm">
           <div>
             <div className="text-white/40">Rounds</div>

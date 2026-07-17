@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Timer from '../../components/Timer';
 import Avatar from '../../components/Avatar';
+import { getTheme } from './themes';
 
 function Confetti() {
   const colors = ['#F59E0B', '#EF4444', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#F97316', '#14B8A6'];
@@ -75,14 +76,18 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
   const [guessText, setGuessText] = useState('');
   const [guessResult, setGuessResult] = useState(null);
   const [prevHintsRevealed, setPrevHintsRevealed] = useState(0);
-  const feedEndRef = useRef(null);
+  const feedContainerRef = useRef(null);
 
   const me = room.players.find(p => p.id === myId);
   const isHost = room.hostId === myId;
   const hasGuessedCorrectly = !!room.correctGuesses?.[myId];
 
+  // Keep the guess feed pinned to the latest entry WITHOUT scrolling the page.
+  // We scroll only the feed's own container so nobody's window jumps when
+  // another player submits a guess.
   useEffect(() => {
-    feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = feedContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [room.guessFeed?.length]);
 
   useEffect(() => {
@@ -121,15 +126,19 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
 
   const hints = room.hints || [];
   const totalHints = room.totalHints || 5;
+  const theme = getTheme(room.theme || room.settings?.theme);
 
   return (
-    <div className="min-h-screen flex flex-col p-4 pt-8 max-w-5xl mx-auto">
+    <div className="min-h-screen flex flex-col p-4 pt-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <span className="text-3xl">{'\u{1F929}'}</span>
           <div>
-            <div className="text-white/40 text-sm">Famous Faces</div>
+            <div className="text-white/40 text-sm flex items-center gap-1.5">
+              <span>{theme.emoji}</span>
+              <span>{theme.label}</span>
+            </div>
             <div className="text-lg font-bold text-amber-300">
               Round {room.currentRound + 1}/{room.settings.rounds}
             </div>
@@ -138,10 +147,12 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
         {room.state === 'playing' && <Timer endTime={room.timerEnd} />}
       </div>
 
-      {/* Main game area - responsive layout */}
-      <div className="flex flex-col lg:flex-row gap-6 flex-1">
-        {/* Left: Hints + Guess */}
-        <div className="flex-1 space-y-4">
+      {/* Main game area - responsive 3-column layout:
+          scoring (left) · game (center) · chat feed (right).
+          On mobile everything stacks: game, then scoring, then feed. */}
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 lg:items-start">
+        {/* Center: Hints + Guess (first on mobile) */}
+        <div className="flex-1 space-y-4 order-1 lg:order-2">
           {/* Playing state */}
           {room.state === 'playing' && (
             <>
@@ -208,7 +219,7 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
                       value={guessText}
                       onChange={e => setGuessText(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleGuess()}
-                      placeholder="Type your guess..."
+                      placeholder={`Guess the ${theme.noun}...`}
                       maxLength={100}
                       autoFocus
                       className={`flex-1 px-4 py-3 bg-white/5 border rounded-xl text-white
@@ -297,8 +308,8 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
           )}
         </div>
 
-        {/* Right sidebar: Leaderboard + Guess Feed */}
-        <div className="lg:w-80 space-y-4">
+        {/* Left: Leaderboard / scoring (second on mobile) */}
+        <div className="lg:w-72 space-y-4 order-2 lg:order-1">
           {/* Leaderboard */}
           <div className="glass rounded-2xl p-4">
             <h3 className="text-amber-400 font-bold text-sm mb-3 flex items-center gap-2">
@@ -332,13 +343,16 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
             </div>
           </div>
 
-          {/* Guess Feed */}
-          {room.state === 'playing' && room.guessFeed && room.guessFeed.length > 0 && (
+        </div>
+
+        {/* Right: Guess Feed / chat (last on mobile) */}
+        {room.state === 'playing' && room.guessFeed && room.guessFeed.length > 0 && (
+          <div className="lg:w-72 space-y-4 order-3">
             <div className="glass rounded-2xl p-4">
               <h3 className="text-white/50 font-bold text-sm mb-3 flex items-center gap-2">
                 {'\u{1F4AC}'} Guess Feed
               </h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div ref={feedContainerRef} className="space-y-2 max-h-64 overflow-y-auto">
                 {room.guessFeed.map((entry, i) => (
                   <div key={i} className="flex items-start gap-2 animate-fade-in">
                     <Avatar avatar={entry.avatar} color={entry.avatarColor} size="sm" />
@@ -356,11 +370,10 @@ export default function FamousFacesGame({ room, myId, onGuess, onContinue, onPla
                     </div>
                   </div>
                 ))}
-                <div ref={feedEndRef} />
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

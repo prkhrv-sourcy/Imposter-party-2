@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { FF_THEMES } from './themes';
 
 export default function FamousFacesHome({ onCreateRoom, onJoinRoom, onBack, initialRoomCode = '' }) {
   const [mode, setMode] = useState(initialRoomCode ? 'join' : null);
@@ -7,11 +8,12 @@ export default function FamousFacesHome({ onCreateRoom, onJoinRoom, onBack, init
   const [rounds, setRounds] = useState(5);
   const [roundDuration, setRoundDuration] = useState(90);
   const [hintInterval, setHintInterval] = useState(10);
+  const [theme, setTheme] = useState('celebrities');
   const [error, setError] = useState('');
 
   const handleCreate = () => {
     if (!name.trim()) return setError('Enter your name!');
-    onCreateRoom(name.trim(), { rounds, roundDuration, hintInterval });
+    onCreateRoom(name.trim(), { rounds, roundDuration, hintInterval, theme });
   };
 
   const handleJoin = () => {
@@ -39,7 +41,7 @@ export default function FamousFacesHome({ onCreateRoom, onJoinRoom, onBack, init
         <h2 className="text-3xl md:text-5xl font-bold text-white/90">
           FACES
         </h2>
-        <p className="text-white/50 mt-4 text-lg">Guess the celebrity from hilarious hints!</p>
+        <p className="text-white/50 mt-4 text-lg">Guess celebrities, animals, cities &amp; more from hilarious hints!</p>
       </div>
 
       {!mode && (
@@ -103,6 +105,29 @@ export default function FamousFacesHome({ onCreateRoom, onJoinRoom, onBack, init
 
             {mode === 'create' && (
               <div className="space-y-3 pt-2">
+                <div>
+                  <label className="text-white/60 text-sm mb-2 block">Theme</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {FF_THEMES.map(t => (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setTheme(t.key)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all
+                          ${theme === t.key
+                            ? 'border-amber-400 bg-amber-500/15 ring-1 ring-amber-400'
+                            : 'border-white/10 bg-white/5 hover:bg-white/10'
+                          }`}
+                      >
+                        <span className="text-xl leading-none">{t.emoji}</span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-white/90 truncate">{t.label}</span>
+                          <span className="block text-[11px] text-white/40 truncate">{t.blurb}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div>
                   <label className="text-white/60 text-sm mb-1 flex justify-between">
                     <span>Rounds</span>
