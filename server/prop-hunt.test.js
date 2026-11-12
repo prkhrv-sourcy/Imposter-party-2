@@ -307,7 +307,10 @@ test("props jump onto tables, remain supported, fall off edges, and cannot doubl
   const held = { x: 0, z: 7, role: "prop", type: "cone" };
   for (let i = 0; i < 90; i++) movePlayer(held, { x: 0, z: 0, jump: true });
   assert.equal(held.y, 0, "holding jump cannot bounce repeatedly");
-  for (const extra of [{ role: "hunter" }, { role: "prop", caught: true }]) {
+  for (const extra of [
+    { role: "hunter", caught: true },
+    { role: "prop", caught: true },
+  ]) {
     const blocked = { x: 0, z: 7, type: "cone", ...extra };
     movePlayer(blocked, { x: 0, z: 0, jump: true });
     assert.equal(blocked.y, 0);
@@ -429,4 +432,18 @@ test("small elevated disguises are hit at their height, not below the surface", 
   const p = { x: -3.7, z: 1.6, y: 1.09, role: "prop", type: "notebook" };
   for (let i = 0; i < 30; i++) movePlayer(p, { x: 0, z: 0 });
   assert.equal(p.y, 1.09, "small props stay on the tabletop");
+});
+
+test("hunters jump with shared physics and fire from their elevated position", () => {
+  const hunter = { id: "hunter", role: "hunter", x: 0, z: 7 };
+  let peak = 0;
+  for (let i = 0; i < 12; i++) {
+    movePlayer(hunter, { x: 0, z: 0, jump: i === 0 });
+    peak = Math.max(peak, hunter.y);
+  }
+  assert.ok(peak > 1.5);
+  const shot = traceShot([], hunter, "glock", 0, 0);
+  assert.equal(shot.origin.y, hunter.y + 1.65);
+  for (let i = 0; i < 45; i++) movePlayer(hunter, { x: 0, z: 0 });
+  assert.equal(hunter.y, 0);
 });

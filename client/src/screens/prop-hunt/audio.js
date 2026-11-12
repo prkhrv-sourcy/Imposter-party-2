@@ -13,12 +13,46 @@ export function prepareAudio(ctx) {
   mixer.attack.value = 0.003;
   mixer.release.value = 0.15;
   mixer.connect(ctx.destination);
-  const resources = { buffer, mixer };
+  const shots = {};
+  for (const weapon of ["glock", "shotgun"]) {
+    const shotgun = weapon === "shotgun";
+    const clip = ctx.createBuffer(
+      1,
+      Math.ceil(ctx.sampleRate * (shotgun ? 0.4 : 0.22)),
+      ctx.sampleRate,
+    );
+    const samples = clip.getChannelData(0);
+    let filtered = 0,
+      phase = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const t = i / ctx.sampleRate,
+        noise = data[i % data.length];
+      const cutoff = (shotgun ? 4800 : 8500) * Math.exp(-t * 9);
+      filtered +=
+        (noise - filtered) *
+        (1 - Math.exp((-2 * Math.PI * cutoff) / ctx.sampleRate));
+      phase +=
+        (2 * Math.PI * (shotgun ? 115 : 185) * Math.exp(-t * 12)) /
+        ctx.sampleRate;
+      const attack = Math.min(1, t / 0.0005);
+      const fade = Math.min(1, (samples.length - i) / (ctx.sampleRate * 0.002));
+      samples[i] =
+        attack *
+        fade *
+        (filtered *
+          (shotgun ? 0.9 : 0.65) *
+          Math.exp(-t / (shotgun ? 0.045 : 0.022)) +
+          Math.sin(phase) * 0.5 * Math.exp(-t / (shotgun ? 0.055 : 0.028)) +
+          noise * 0.4 * Math.exp(-t / 0.004));
+    }
+    shots[weapon] = clip;
+  }
+  const resources = { buffer, mixer, shots };
   audioResources.set(ctx, resources);
   return resources;
 }
 
-// Layered transients, body, tail, and action sounds are synthesized locally—no asset downloads.
+// Gun clips are generated once on activation; firing only starts one cached source.
 export function sound(
   ctx,
   kind,
@@ -37,6 +71,18 @@ export function sound(
   output.connect(stereo);
   // Gun transients bypass compressor look-ahead to keep the trigger responsive.
   stereo.connect(kind === "shot" ? ctx.destination : resources.mixer);
+  if (kind === "shot") {
+    const source = ctx.createBufferSource();
+    source.buffer = resources.shots[weapon] || resources.shots.glock;
+    source.connect(output);
+    source.onended = () => {
+      source.disconnect();
+      output.disconnect();
+      stereo.disconnect();
+    };
+    source.start(start);
+    return;
+  }
   let voices = 0;
   const ended = () => {
     if (--voices === 0) {
@@ -117,18 +163,7 @@ export function sound(
       ended();
     };
   }
-  if (kind === "shot") {
-    const shotgun = weapon === "shotgun";
-    noise(shotgun ? 0.32 : 0.15, shotgun ? 0.9 : 0.65, shotgun ? 4800 : 8500);
-    tone(shotgun ? 115 : 185, 45, shotgun ? 0.23 : 0.12, 0.5);
-    noise(0.045, 0.4, 11000);
-    noise(shotgun ? 0.22 : 0.12, 0.12, 1600, 0.075);
-    noise(0.035, 0.12, 2600, shotgun ? 0.32 : 0.1);
-    if (shotgun) {
-      noise(0.06, 0.23, 3300, 0.4);
-      tone(260, 130, 0.06, 0.12, 0.43, "triangle");
-    }
-  } else if (kind === "reload") {
+  if (kind === "reload") {
     for (const delay of weapon === "shotgun"
       ? [0.03, 0.45, 1.1, 1.85]
       : [0.03, 0.55, 1.15]) {

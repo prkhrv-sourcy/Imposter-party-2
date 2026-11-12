@@ -61,6 +61,7 @@ function World({
       local = null,
       epoch = "",
       active = false,
+      activation = 0,
       yaw = 0,
       pitch = 0.1,
       drag = null,
@@ -86,11 +87,20 @@ function World({
     function action(type) {
       if (!active || !socketRef.current?.connected) return;
       if (type === "jump") {
-        if (local?.role === "prop" && !local.caught) jumpQueued = true;
+        if (
+          local &&
+          !local.caught &&
+          !(local.role === "hunter" && stateRef.current?.phase === "hide")
+        )
+          jumpQueued = true;
         return;
       }
       let request = type;
       if (type === "shoot") {
+        if (!mutedRef.current && audio?.state !== "running") {
+          unlock();
+          return;
+        }
         const s = stateRef.current,
           weapon = local?.weapon || "glock",
           config = WEAPONS[weapon];
@@ -117,7 +127,7 @@ function World({
         });
         const { origin, rays } = traceShot(
           targets,
-          { ...local, x: renderPos.x, z: renderPos.z },
+          { ...local, x: renderPos.x, y: renderPos.y, z: renderPos.z },
           weapon,
           yaw,
           pitch,
@@ -138,6 +148,7 @@ function World({
       });
     }
     function unlock() {
+      activation++;
       active = false;
       keys.clear();
       feedback.length = 0;
@@ -145,15 +156,26 @@ function World({
       joy = { x: 0, z: 0 };
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     }
-    function activate() {
-      active = true;
-      audio ||= new (window.AudioContext || window.webkitAudioContext)({
-        latencyHint: "interactive",
-      });
-      prepareAudio(audio);
-      audio.resume().catch(() => {});
-      if (!window.matchMedia("(pointer: coarse)").matches)
-        canvas.requestPointerLock?.()?.catch(() => {});
+    async function activate() {
+      const attempt = ++activation;
+      try {
+        audio ||= new (window.AudioContext || window.webkitAudioContext)({
+          latencyHint: "interactive",
+        });
+        const ready = audio.resume();
+        prepareAudio(audio);
+        audio.onstatechange = () => {
+          if (!disposed && active && audio.state !== "running") unlock();
+        };
+        if (!window.matchMedia("(pointer: coarse)").matches)
+          canvas.requestPointerLock?.()?.catch(() => {});
+        await ready;
+        if (!disposed && attempt === activation && audio.state === "running")
+          active = true;
+      } catch {
+        if (!disposed)
+          onError("Audio could not start. Tap to enter the game again.");
+      }
     }
     apiRef.current = {
       activate,
@@ -380,7 +402,9 @@ function World({
           const moving = Math.hypot(local.vx || 0, local.vz || 0) > 1;
           camera.position.set(
             renderPos.x,
-            1.65 + (moving && !reduced ? Math.sin(now * 0.013) * 0.025 : 0),
+            renderPos.y +
+              1.65 +
+              (moving && !reduced ? Math.sin(now * 0.013) * 0.025 : 0),
             renderPos.z,
           );
           camera.rotation.order = "YXZ";
@@ -965,11 +989,9 @@ export default function PropHunt({ onBack }) {
                   <span>
                     <kbd>E</kbd> {hunter ? "Fire" : "Copy prop"}
                   </span>
-                  {!hunter && (
-                    <span>
-                      <kbd>SPACE</kbd> Jump onto furniture
-                    </span>
-                  )}
+                  <span>
+                    <kbd>SPACE</kbd> Jump onto furniture
+                  </span>
                   {!hunter && (
                     <span>
                       <kbd>F</kbd> Decoy taunt · 25s cooldown
@@ -1034,7 +1056,7 @@ export default function PropHunt({ onBack }) {
               </div>
             </div>
           )}
-          <div className={`ph-bottom-hud ${hunter ? "" : "ph-prop-hud"}`}>
+          <div className="ph-bottom-hud ph-prop-hud">
             <div className="ph-status">
               <span className="ph-status-dot" />
               {me?.caught
@@ -1046,7 +1068,7 @@ export default function PropHunt({ onBack }) {
                     : "Find an object to copy"}
               <small>
                 {hunter
-                  ? "Left click / E fire · R reload · 1 / 2 switch"
+                  ? "Left click / E fire · Space jump · R reload · 1 / 2 switch"
                   : "Space to jump onto furniture · Stand still to blend in."}
               </small>
             </div>
@@ -1072,22 +1094,22 @@ export default function PropHunt({ onBack }) {
                   </small>
                 </button>
               )}
-              {!hunter && (
-                <button
-                  disabled={!hud.active || me?.caught}
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    apiRef.current?.action("jump");
-                  }}
-                  onClick={(e) => {
-                    if (e.detail === 0) apiRef.current?.action("jump");
-                  }}
-                >
-                  <kbd>SPACE</kbd>
-                  <strong>Jump</strong>
-                  <small>Reach higher spots</small>
-                </button>
-              )}
+              <button
+                disabled={
+                  !hud.active || me?.caught || (hunter && room.phase === "hide")
+                }
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  apiRef.current?.action("jump");
+                }}
+                onClick={(e) => {
+                  if (e.detail === 0) apiRef.current?.action("jump");
+                }}
+              >
+                <kbd>SPACE</kbd>
+                <strong>Jump</strong>
+                <small>Reach higher spots</small>
+              </button>
               <button
                 disabled={
                   !hud.active ||

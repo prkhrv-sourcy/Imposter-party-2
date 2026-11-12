@@ -229,7 +229,6 @@ export function movePlayer(p, input, dt = STEP, slow = false) {
     !p.jumpHeld &&
     supported &&
     p.vy === 0 &&
-    p.role === "prop" &&
     !p.caught
   )
     p.vy = 8.8;

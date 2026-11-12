@@ -73,23 +73,28 @@ function audioContext() {
   };
 }
 
-test("gun layers share one audio timestamp, reuse warmed noise, and clean up on audio completion", () => {
-  const f = audioContext();
-  prepareAudio(f.ctx);
-  assert.equal(f.buffers, 1);
-  sound(f.ctx, "shot", 0, "glock");
-  assert.equal(f.reads, 1);
-  assert.equal(f.starts[0].at, 10.001);
-  assert.equal(f.nodes.find((n) => n.kind === "pan").target, f.ctx.destination);
-  assert.equal(f.buffers, 1);
-  assert.equal(new Set(f.starts.slice(0, 3).map((s) => s.at)).size, 1);
-  const output = f.nodes.find((n) => n.kind === "gain");
-  assert.equal(output.disconnects, 0);
-  for (const s of f.starts) s.node.onended?.();
-  assert.equal(output.disconnects, 1);
-  sound(f.ctx, "shot", 0, "shotgun");
-  assert.equal(f.buffers, 1);
-  assert.equal(f.reads, 2);
+test("every gunshot plays one pre-generated buffer immediately, reuses it and cleans up", () => {
+  const f = audioContext(),
+    resources = prepareAudio(f.ctx);
+  assert.equal(f.buffers, 3);
+  for (const weapon of ["glock", "glock", "shotgun"]) {
+    const count = f.starts.length,
+      nodes = f.nodes.length;
+    sound(f.ctx, "shot", 0, weapon);
+    assert.equal(f.starts.length, count + 1);
+    const shot = f.starts.at(-1);
+    assert.equal(shot.node.buffer, resources.shots[weapon]);
+    assert.equal(shot.at, 10 + f.reads * 0.001);
+    assert.equal(f.buffers, 3);
+    const created = f.nodes.slice(nodes);
+    assert.deepEqual(
+      created.map((n) => n.kind),
+      ["gain", "pan", "noise"],
+    );
+    assert.equal(created[1].target, f.ctx.destination);
+    shot.node.onended();
+    assert.ok(created.every((n) => n.disconnects === 1));
+  }
 });
 test("all 12 taunts have distinct valid voices and use the same synchronized audio path", () => {
   assert.equal(TAUNTS.length, 12);
