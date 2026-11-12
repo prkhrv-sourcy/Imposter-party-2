@@ -220,13 +220,13 @@ test("socket lifecycle: validation, rooms, host-only start, reconnect, leave and
   const b2 = await connect(secret);
   assert.equal(r.players.find((p) => p.id === pid).connected, true);
   r.phase = "hunt";
-  const jumper = r.players.find(p => p.id === pid);
-  const motionPacket = new Promise(resolve => b2.once("motion", resolve));
-  b2.emit("input", {seq:1,x:0,z:0,yaw:0,jump:true,y:100,vy:100});
-  await new Promise(resolve => setTimeout(resolve,100));
+  const jumper = r.players.find((p) => p.id === pid);
+  const motionPacket = new Promise((resolve) => b2.once("motion", resolve));
+  b2.emit("input", { seq: 1, x: 0, z: 0, yaw: 0, jump: true, y: 100, vy: 100 });
+  await new Promise((resolve) => setTimeout(resolve, 100));
   assert.ok(jumper.y > 0 && jumper.y < 2, "server computes jump height");
   const packet = await motionPacket;
-  assert.equal(packet.players.find(p=>p[0]===pid).length,10);
+  assert.equal(packet.players.find((p) => p[0] === pid).length, 10);
   const h = r.players[0];
   const before = h.x;
   for (let i = 1; i < 50; i++)
@@ -335,4 +335,43 @@ test("jumping respects tall walls and hits use the prop's actual elevation", () 
   r.players[1].vy = 4;
   startRound(r, 5000);
   assert.ok(r.players.every((p) => p.y === 0 && p.vy === 0 && !p.jumpHeld));
+});
+
+test("decoys mimic the assigned taunt away from the prop, enforce cooldowns, and preserve real taunts", () => {
+  const r = room(),
+    p = r.players[1],
+    h = r.players[0];
+  assert.ok(act(r, p, "decoy", 2000).error);
+  r.phase = "hunt";
+  const tauntAt = p.tauntAt;
+  const result = act(r, p, { type: "decoy", x: 999, z: 999 }, 3000);
+  assert.equal(result.event.kind, "taunt");
+  assert.equal(result.event.tauntId, p.tauntId);
+  const range = Math.hypot(result.event.x - p.x, result.event.z - p.z);
+  assert.ok(range >= 5 && range <= 12);
+  assert.deepEqual(Object.keys(result.event).sort(), [
+    "kind",
+    "name",
+    "tauntId",
+    "x",
+    "y",
+    "z",
+  ]);
+  assert.equal(
+    p.tauntAt,
+    tauntAt,
+    "real automatic taunts still expose the prop",
+  );
+  assert.equal(p.decoyAt, 28000);
+  assert.ok(act(r, p, "decoy", 27999).error);
+  assert.ok(act(r, p, "decoy", 28000).event);
+  assert.equal(act(r, h, "decoy", 30000).event, undefined);
+  p.caught = true;
+  assert.ok(act(r, p, "decoy", 60000).error);
+  p.caught = false;
+  p.connected = false;
+  assert.ok(act(r, p, "decoy", 60000).error);
+  p.connected = true;
+  startRound(r, 70000);
+  assert.ok(r.players.every((p) => p.decoyAt === 0));
 });

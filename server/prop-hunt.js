@@ -75,6 +75,7 @@ export function startRound(room, now = Date.now()) {
         scanAt: 0,
         changeAt: 0,
         tauntAt: now + 20000,
+        decoyAt: 0,
         slowUntil: 0,
       },
     ),
@@ -255,6 +256,29 @@ export function act(room, p, request, now = Date.now()) {
       p.yaw = prop.yaw;
       p.changeAt = now + 2500;
       return { event: { kind: "poof", x: p.x, y: p.y || 0, z: p.z } };
+    }
+    if (action === "decoy") {
+      if (room.phase !== "hunt")
+        return { error: "Decoys unlock when the hunt starts." };
+      if (now < p.decoyAt) return { error: "Your decoy is recharging." };
+      const spots = PROPS.filter(
+        (t) => distance(p, t) >= 5 && distance(p, t) <= 12,
+      );
+      if (!spots.length)
+        return { error: "Move closer to some furniture to throw a decoy." };
+      const spot = spots[randomInt(spots.length)];
+      p.decoyAt = now + 25000;
+      // Identical to a real taunt: no owner or decoy marker leaks to hunters.
+      return {
+        event: {
+          kind: "taunt",
+          x: spot.x,
+          y: 0,
+          z: spot.z,
+          name: "Somewhere nearby…",
+          tauntId: p.tauntId,
+        },
+      };
     }
     if (action === "taunt" && now >= p.tauntAt - 16000) {
       p.tauntAt = now + 20000;

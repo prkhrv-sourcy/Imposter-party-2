@@ -255,6 +255,7 @@ function World({
       keys.add(e.code);
       if (e.repeat) return;
       const p = local;
+      if (e.code === "KeyF" && p?.role === "prop") action("decoy");
       if (e.code === "Space") action("jump");
       if (e.code === "KeyE") action(p?.role === "hunter" ? "shoot" : "change");
       if (e.code === "KeyQ") action(p?.role === "hunter" ? "scan" : "taunt");
@@ -973,6 +974,11 @@ export default function PropHunt({ onBack }) {
                       <kbd>SPACE</kbd> Jump onto furniture
                     </span>
                   )}
+                  {!hunter && (
+                    <span>
+                      <kbd>F</kbd> Decoy taunt · 25s cooldown
+                    </span>
+                  )}
                   <span>
                     <kbd>Q</kbd> {hunter ? "Scan" : "Taunt"}
                   </span>
@@ -1032,7 +1038,7 @@ export default function PropHunt({ onBack }) {
               </div>
             </div>
           )}
-          <div className="ph-bottom-hud">
+          <div className={`ph-bottom-hud ${hunter ? "" : "ph-prop-hud"}`}>
             <div className="ph-status">
               <span className="ph-status-dot" />
               {me?.caught
@@ -1049,6 +1055,27 @@ export default function PropHunt({ onBack }) {
               </small>
             </div>
             <div className="ph-actions">
+              {!hunter && (
+                <button
+                  disabled={
+                    !hud.active ||
+                    me?.caught ||
+                    room.phase !== "hunt" ||
+                    serverNow < me?.decoyAt
+                  }
+                  onClick={() => apiRef.current?.action("decoy")}
+                >
+                  <kbd>F</kbd>
+                  <strong>Decoy</strong>
+                  <small>
+                    {room.phase !== "hunt"
+                      ? "Hunt only"
+                      : serverNow < me?.decoyAt
+                        ? `${Math.ceil((me.decoyAt - serverNow) / 1000)}s cooldown`
+                        : "Lure them away"}
+                  </small>
+                </button>
+              )}
               {!hunter && (
                 <button
                   disabled={!hud.active || me?.caught}
