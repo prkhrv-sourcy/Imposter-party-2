@@ -13,41 +13,78 @@ export function prepareAudio(ctx) {
   mixer.attack.value = 0.003;
   mixer.release.value = 0.15;
   mixer.connect(ctx.destination);
+  // Keep Chrome's output graph active between short shots instead of reconnecting it.
+  const gunBus = ctx.createGain();
+  gunBus.gain.value = 0.4;
+  gunBus.connect(ctx.destination);
+  const silence = ctx.createConstantSource();
+  silence.offset.value = 0;
+  silence.connect(gunBus);
+  silence.start();
   const shots = {};
   for (const weapon of ["glock", "shotgun"]) {
     const shotgun = weapon === "shotgun";
     const clip = ctx.createBuffer(
       1,
-      Math.ceil(ctx.sampleRate * (shotgun ? 0.4 : 0.22)),
+      Math.ceil(ctx.sampleRate * (shotgun ? 0.85 : 0.22)),
       ctx.sampleRate,
     );
     const samples = clip.getChannelData(0);
     let filtered = 0,
-      phase = 0;
+      phase = 0,
+      peak = 0;
     for (let i = 0; i < samples.length; i++) {
       const t = i / ctx.sampleRate,
         noise = data[i % data.length];
-      const cutoff = (shotgun ? 4800 : 8500) * Math.exp(-t * 9);
+      const cutoff = (shotgun ? 6500 : 8500) * Math.exp(-t * 7);
       filtered +=
         (noise - filtered) *
         (1 - Math.exp((-2 * Math.PI * cutoff) / ctx.sampleRate));
       phase +=
-        (2 * Math.PI * (shotgun ? 115 : 185) * Math.exp(-t * 12)) /
+        (2 *
+          Math.PI *
+          ((shotgun ? 45 : 60) + (shotgun ? 90 : 125) * Math.exp(-t * 24))) /
         ctx.sampleRate;
       const attack = Math.min(1, t / 0.0005);
       const fade = Math.min(1, (samples.length - i) / (ctx.sampleRate * 0.002));
-      samples[i] =
+      let value =
         attack *
-        fade *
         (filtered *
-          (shotgun ? 0.9 : 0.65) *
-          Math.exp(-t / (shotgun ? 0.045 : 0.022)) +
-          Math.sin(phase) * 0.5 * Math.exp(-t / (shotgun ? 0.055 : 0.028)) +
-          noise * 0.4 * Math.exp(-t / 0.004));
+          (shotgun ? 1.15 : 0.65) *
+          Math.exp(-t / (shotgun ? 0.065 : 0.022)) +
+          Math.sin(phase) *
+            (shotgun ? 0.65 : 0.5) *
+            Math.exp(-t / (shotgun ? 0.075 : 0.028)) +
+          noise * (shotgun ? 0.7 : 0.4) * Math.exp(-t / 0.004));
+      if (shotgun) {
+        value += filtered * 0.14 * Math.exp(-t / 0.18);
+        for (const [delay, gain] of [
+          [0.024, 0.12],
+          [0.055, 0.07],
+        ]) {
+          const offset = Math.round(delay * ctx.sampleRate);
+          if (i >= offset) value += samples[i - offset] * gain;
+        }
+        for (const [delay, gain, frequency] of [
+          [0.32, 0.16, 750],
+          [0.49, 0.22, 1250],
+        ]) {
+          const u = t - delay;
+          if (u >= 0)
+            value +=
+              Math.min(1, u / 0.002) *
+              Math.exp(-u / 0.022) *
+              (noise * gain + Math.sin(2 * Math.PI * frequency * u) * 0.07);
+        }
+      }
+      samples[i] = value * fade;
+      peak = Math.max(peak, Math.abs(samples[i]));
     }
+    const gain = (shotgun ? 0.95 : 0.8) / Math.max(peak, 0.001);
+    for (let i = 0; i < samples.length; i++) samples[i] *= gain;
     shots[weapon] = clip;
   }
-  const resources = { buffer, mixer, shots };
+  const resources = { buffer, mixer, shots, gunBus };
   audioResources.set(ctx, resources);
   return resources;
 }
@@ -61,28 +98,38 @@ export function sound(
   volume = 1,
   tauntId,
 ) {
-  if (!ctx || ctx.state !== "running" || volume < 0.015) return;
+  if (!ctx || ctx.state !== "running" || volume < 0.015) return false;
   const resources = prepareAudio(ctx);
-  const start = ctx.currentTime;
-  const output = ctx.createGain(),
-    stereo = ctx.createStereoPanner();
-  output.gain.value = Math.min(1, volume) * (kind === "shot" ? 0.3 : 0.48);
-  stereo.pan.value = pan;
-  output.connect(stereo);
-  // Gun transients bypass compressor look-ahead to keep the trigger responsive.
-  stereo.connect(kind === "shot" ? ctx.destination : resources.mixer);
   if (kind === "shot") {
     const source = ctx.createBufferSource();
     source.buffer = resources.shots[weapon] || resources.shots.glock;
-    source.connect(output);
+    let gain, stereo;
+    if (pan === 0 && volume === 1) {
+      source.connect(resources.gunBus);
+    } else {
+      gain = ctx.createGain();
+      stereo = ctx.createStereoPanner();
+      gain.gain.value = Math.min(1, volume);
+      stereo.pan.value = pan;
+      source.connect(gain);
+      gain.connect(stereo);
+      stereo.connect(resources.gunBus);
+    }
     source.onended = () => {
       source.disconnect();
-      output.disconnect();
-      stereo.disconnect();
+      gain?.disconnect();
+      stereo?.disconnect();
     };
-    source.start(start);
-    return;
+    source.start();
+    return true;
   }
+  const start = ctx.currentTime;
+  const output = ctx.createGain(),
+    stereo = ctx.createStereoPanner();
+  output.gain.value = Math.min(1, volume) * 0.48;
+  stereo.pan.value = pan;
+  output.connect(stereo);
+  stereo.connect(resources.mixer);
   let voices = 0;
   const ended = () => {
     if (--voices === 0) {

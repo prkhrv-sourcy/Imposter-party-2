@@ -69,7 +69,7 @@ function World({
       joy = { x: 0, z: 0 },
       audio = null,
       hudAt = 0,
-      lastShot = 0,
+      nextShotAt = 0,
       hitUntil = 0,
       hitCaught = false;
     const feedback = [];
@@ -108,15 +108,18 @@ function World({
           s?.phase !== "hunt" ||
           local?.role !== "hunter" ||
           s.serverTime < local.reloadAt ||
-          performance.now() - lastShot < config.cooldown
+          performance.now() < nextShotAt
         )
           return;
         if (!local.ammo?.[weapon]) {
           onError("Magazine empty. Press R to reload.");
           return;
         }
-        lastShot = performance.now();
-        if (!mutedRef.current) sound(audio, "shot", 0, weapon);
+        if (!mutedRef.current && !sound(audio, "shot", 0, weapon)) {
+          unlock();
+          return;
+        }
+        nextShotAt = performance.now() + config.cooldown;
         request = { type, yaw, pitch, shotTime: s.serverTime - 70 };
         local.ammo = { ...local.ammo, [weapon]: local.ammo[weapon] - 1 };
         const targets = s.players.map((p) => {
@@ -141,8 +144,10 @@ function World({
           rays,
           impacts: [],
         });
-      } else if (type === "glock" || type === "shotgun")
+      } else if (type === "glock" || type === "shotgun") {
+        nextShotAt = Math.max(nextShotAt, performance.now() + 250);
         request = { type: "equip", weapon: type };
+      }
       socketRef.current.emit("action", request, (res) => {
         if (res?.error) onError(res.error);
       });
