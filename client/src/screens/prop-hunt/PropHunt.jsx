@@ -562,7 +562,7 @@ export default function PropHunt({ onBack }) {
     noticeTimer.current = setTimeout(() => setError(""), 4000);
   };
   useEffect(() => {
-    const s = io("/prop-hunt", { auth: { token } });
+    const s = io("/prop-hunt", { auth: { token }, autoConnect: false });
     socketRef.current = s;
     s.on("identity", (id) => setPlayerId(id));
     s.on("connect", () => setConnected(true));
@@ -615,6 +615,7 @@ export default function PropHunt({ onBack }) {
       apiRef.current?.snapshot(next);
     });
     s.on("effect", (e) => apiRef.current?.effect(e));
+    s.connect();
     const timer = setInterval(() => setNow(Date.now()), 200);
     return () => {
       s.disconnect();
