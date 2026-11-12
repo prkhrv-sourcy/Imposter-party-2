@@ -209,15 +209,11 @@ export function createScene(container, { low = false } = {}) {
       cylinder(g, 0.94, 0.94, 0.14, "#f3d6a5", 0, 1.02);
       cylinder(g, 0.09, 0.12, 0.9, "#365f58", 0, 0.5);
       cylinder(g, 0.48, 0.48, 0.07, "#365f58", 0, 0.07);
-      cylinder(g, 0.12, 0.09, 0.2, "#e9aa7c", 0.25, 1.2, 0.15);
-      ball(g, 0.15, "#73995c", 0.25, 1.39, 0.15);
-      box(g, 0.35, 0.025, 0.24, "#fff0d7", -0.3, 1.11, -0.15, 0.01);
     } else if (f.kind === "counter") {
       box(g, f.w, 1.2, f.d, "#7ba398", 0, 0.6);
       box(g, f.w + 0.15, 0.15, f.d + 0.15, "#f4ddb6", 0, 1.27);
       for (let i = -1; i <= 1; i++) {
         box(g, 1, 0.8, 0.08, "#527c72", i * 1.4, 0.65, f.d / 2 + 0.03);
-        cylinder(g, 0.18, 0.18, 0.38, "#d4a875", i * 1.3, 1.55);
       }
     } else if (f.kind === "bench") {
       for (let i = 0; i < 4; i++)
@@ -272,7 +268,14 @@ export function createScene(container, { low = false } = {}) {
   function makeProp(type) {
     const g = new THREE.Group(),
       c = TYPES[type]?.color || "#aaa";
-    if (type === "plant") {
+    if (type === "tabletopPlant") {
+      cylinder(g, 0.12, 0.09, 0.2, c, 0, 0.1);
+      ball(g, 0.15, "#73995c", 0, 0.29);
+    } else if (type === "cup") {
+      cylinder(g, 0.18, 0.18, 0.38, c, 0, 0.19);
+    } else if (type === "notebook") {
+      box(g, 0.35, 0.025, 0.24, c, 0, 0.0125, 0, 0.01);
+    } else if (type === "plant") {
       cylinder(g, 0.34, 0.24, 0.5, c, 0, 0.25);
       cylinder(g, 0.37, 0.37, 0.1, c, 0, 0.5);
       cylinder(g, 0.3, 0.3, 0.025, "#65513b", 0, 0.56);
@@ -346,7 +349,7 @@ export function createScene(container, { low = false } = {}) {
   }
   for (const p of PROPS) {
     const g = makeProp(p.type);
-    g.position.set(p.x, 0, p.z);
+    g.position.set(p.x, p.y || 0, p.z);
     g.rotation.y = p.yaw;
     g.userData.prop = p;
     world.add(g);
@@ -626,8 +629,11 @@ export function createScene(container, { low = false } = {}) {
     );
     contact.rotation.x = -Math.PI / 2;
     contact.position.y = 0.015;
+    contact.scale.setScalar(
+      p.role === "hunter" ? 1 : Math.min(1, (TYPES[p.type].radius * 2) / 1.3),
+    );
     g.add(contact);
-    g.position.set(p.x, 0, p.z);
+    g.position.set(p.x, p.y || 0, p.z);
     g.rotation.y = p.yaw || 0;
     scene.add(g);
     entry = { group: g, key, x: p.x, z: p.z };

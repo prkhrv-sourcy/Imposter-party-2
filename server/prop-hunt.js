@@ -14,7 +14,7 @@ import {
   JAIL,
   distance,
   canStand,
-  lineOfSight,
+  nearestCopyProp,
   movePlayer,
   spawnPoint,
 } from "../client/src/screens/prop-hunt/world.js";
@@ -246,11 +246,17 @@ export function act(room, p, request, now = Date.now()) {
     }
   } else {
     if (action === "change" && now >= p.changeAt) {
-      const prop = PROPS.filter(
-        (t) => distance(p, t) < 2.7 && lineOfSight(p, t),
-      ).sort((a, b) => distance(p, a) - distance(p, b))[0];
+      const prop = nearestCopyProp(p);
       if (!prop) return { error: "Get closer to an object to copy it." };
-      if (!canStand(p.x, p.z, TYPES[prop.type].radius, p.y || 0))
+      if (
+        !canStand(
+          p.x,
+          p.z,
+          TYPES[prop.type].radius,
+          p.y || 0,
+          TYPES[prop.type].height,
+        )
+      )
         return { error: "Move into a little more space first." };
       p.type = prop.type;
       p.yaw = prop.yaw;
@@ -273,7 +279,7 @@ export function act(room, p, request, now = Date.now()) {
         event: {
           kind: "taunt",
           x: spot.x,
-          y: 0,
+          y: spot.y || 0,
           z: spot.z,
           name: "Somewhere nearby…",
           tauntId: p.tauntId,
@@ -618,7 +624,8 @@ export function setupPropHunt(io) {
           )) {
             const types = Object.keys(TYPES).filter(
               (t) =>
-                t !== p.type && canStand(p.x, p.z, TYPES[t].radius, p.y || 0),
+                t !== p.type &&
+                canStand(p.x, p.z, TYPES[t].radius, p.y || 0, TYPES[t].height),
             );
             if (types.length)
               p.type = types[Math.floor(Math.random() * types.length)];

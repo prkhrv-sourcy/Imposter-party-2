@@ -5,7 +5,7 @@ import { createScene } from "./scene";
 import {
   STEP,
   TYPES,
-  PROPS,
+  nearestCopyProp,
   JAIL,
   distance,
   movePlayer,
@@ -455,11 +455,7 @@ function World({
       renderer.render(scene, camera);
       if (now - hudAt > 100) {
         hudAt = now;
-        const nearest = local
-          ? PROPS.filter((o) => distance(local, o) < 2.7).sort(
-              (a, b) => distance(local, a) - distance(local, b),
-            )[0]
-          : null;
+        const nearest = local ? nearestCopyProp(local) : null;
         onHud({
           active,
           nearest: nearest ? TYPES[nearest.type].name : null,

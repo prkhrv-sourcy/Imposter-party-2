@@ -13,6 +13,19 @@ export const TYPES = {
   bin: { name: "Little bin", radius: 0.4, height: 1.15, color: "#70959b" },
   cone: { name: "Traffic cone", radius: 0.36, height: 0.9, color: "#ee8051" },
   stool: { name: "Pink stool", radius: 0.36, height: 0.75, color: "#da8c9c" },
+  tabletopPlant: {
+    name: "Tiny potted plant",
+    radius: 0.15,
+    height: 0.44,
+    color: "#e9aa7c",
+  },
+  cup: { name: "Counter cup", radius: 0.18, height: 0.38, color: "#d4a875" },
+  notebook: {
+    name: "Table notebook",
+    radius: 0.18,
+    height: 0.025,
+    color: "#fff0d7",
+  },
 };
 export const WALLS = [
   { x: 0, z: -28, w: 56, d: 0.6, h: 5.4, color: "#b7c5aa" },
@@ -137,8 +150,18 @@ for (const x of [-21, 21])
       ["chair", x + 1.6, z, -Math.PI / 2],
     );
   }
-export const PROPS = [...courtyardProps, ...outerProps].map(
-  ([type, x, z, yaw], i) => ({ id: `prop-${i}`, type, x, z, yaw }),
+const elevatedProps = FURNITURE.flatMap((f) =>
+  f.kind === "table"
+    ? [
+        ["tabletopPlant", f.x + 0.25, f.z + 0.15, 0, 1.09],
+        ["notebook", f.x - 0.3, f.z - 0.15, 0, 1.09],
+      ]
+    : f.kind === "counter"
+      ? [-1, 0, 1].map((i) => ["cup", f.x + i * 1.3, f.z, 0, 1.345])
+      : [],
+);
+export const PROPS = [...courtyardProps, ...outerProps, ...elevatedProps].map(
+  ([type, x, z, yaw, y = 0], i) => ({ id: `prop-${i}`, type, x, y, z, yaw }),
 );
 export const SOLIDS = [
   ...WALLS,
@@ -165,13 +188,14 @@ export const SOLIDS = [
 export const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 export const radius = (p) =>
   p.role === "hunter" ? 0.34 : TYPES[p.type]?.radius || 0.4;
-export function canStand(x, z, r = 0.4, y = 0) {
+export function canStand(x, z, r = 0.4, y = 0, height = 1.4) {
   return (
     Math.abs(x) < BOUNDS - r &&
     Math.abs(z) < BOUNDS - r &&
     !SOLIDS.some(
       (s) =>
-        s.h > y + 0.001 &&
+        (s.y || 0) + s.h > y + 0.001 &&
+        (s.y || 0) < y + height - 0.001 &&
         Math.abs(x - s.x) < s.w / 2 + r &&
         Math.abs(z - s.z) < s.d / 2 + r,
     )
@@ -196,7 +220,7 @@ export function movePlayer(p, input, dt = STEP, slow = false) {
     p.y === 0 ||
     SOLIDS.some(
       (s) =>
-        Math.abs(p.y - s.h) < 0.001 &&
+        Math.abs(p.y - ((s.y || 0) + s.h)) < 0.001 &&
         Math.abs(p.x - s.x) < s.w / 2 + r &&
         Math.abs(p.z - s.z) < s.d / 2 + r,
     );
@@ -217,20 +241,38 @@ export function movePlayer(p, input, dt = STEP, slow = false) {
   const collisionY = Math.max(previousY, p.y);
   const nx = p.x + p.vx * dt,
     nz = p.z + p.vz * dt;
-  if (canStand(nx, p.z, r, collisionY)) p.x = nx;
+  if (
+    canStand(
+      nx,
+      p.z,
+      r,
+      collisionY,
+      p.role === "hunter" ? 1.9 : TYPES[p.type].height,
+    )
+  )
+    p.x = nx;
   else p.vx = 0;
-  if (canStand(p.x, nz, r, collisionY)) p.z = nz;
+  if (
+    canStand(
+      p.x,
+      nz,
+      r,
+      collisionY,
+      p.role === "hunter" ? 1.9 : TYPES[p.type].height,
+    )
+  )
+    p.z = nz;
   else p.vz = 0;
   if (p.vy <= 0) {
     let floor = 0;
     for (const s of SOLIDS)
       if (
-        s.h <= previousY + 0.001 &&
-        s.h >= p.y &&
+        (s.y || 0) + s.h <= previousY + 0.001 &&
+        (s.y || 0) + s.h >= p.y &&
         Math.abs(p.x - s.x) < s.w / 2 + r &&
         Math.abs(p.z - s.z) < s.d / 2 + r
       )
-        floor = Math.max(floor, s.h);
+        floor = Math.max(floor, (s.y || 0) + s.h);
     if (p.y <= floor) {
       p.y = floor;
       p.vy = 0;
@@ -239,7 +281,9 @@ export function movePlayer(p, input, dt = STEP, slow = false) {
   if (Number.isFinite(input.yaw)) p.yaw = input.yaw;
 }
 export function lineOfSight(a, b) {
-  const steps = Math.ceil(distance(a, b) / 0.15);
+  const startY = (a.y || 0) + Math.min(0.8, (TYPES[a.type]?.height || 1.6) / 2);
+  const endY = (b.y || 0) + (TYPES[b.type]?.height || 1.6) / 2;
+  const steps = Math.ceil(Math.hypot(distance(a, b), endY - startY) / 0.1);
   for (let i = 1; i < steps; i++) {
     const t = i / steps,
       x = a.x + (b.x - a.x) * t,
@@ -247,7 +291,7 @@ export function lineOfSight(a, b) {
     if (
       [...WALLS, ...FURNITURE].some(
         (s) =>
-          s.h > 1.3 &&
+          s.h > startY + (endY - startY) * t &&
           Math.abs(x - s.x) < s.w / 2 &&
           Math.abs(z - s.z) < s.d / 2,
       )
@@ -255,6 +299,18 @@ export function lineOfSight(a, b) {
       return false;
   }
   return true;
+}
+export function nearestCopyProp(player) {
+  const centerY =
+    (player.y || 0) + Math.min(0.8, (TYPES[player.type]?.height || 1.6) / 2);
+  const reach = (p) =>
+    Math.hypot(
+      distance(player, p),
+      (p.y || 0) + TYPES[p.type].height / 2 - centerY,
+    );
+  return PROPS.filter((p) => reach(p) < 2.7 && lineOfSight(player, p)).sort(
+    (a, b) => reach(a) - reach(b),
+  )[0];
 }
 const SPAWNS = [
   { x: 0, z: 7 },

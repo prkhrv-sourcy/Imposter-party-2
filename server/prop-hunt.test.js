@@ -7,6 +7,8 @@ import { randomUUID, createHash } from "node:crypto";
 import { startRound, act, setupPropHunt } from "./prop-hunt.js";
 import {
   movePlayer,
+  PROPS,
+  nearestCopyProp,
   canStand,
   lineOfSight,
   spawnPoint,
@@ -374,4 +376,57 @@ test("decoys mimic the assigned taunt away from the prop, enforce cooldowns, and
   p.connected = true;
   startRound(r, 70000);
   assert.ok(r.players.every((p) => p.decoyAt === 0));
+});
+
+test("elevated plants, cups and notebooks copy at their true size and height", () => {
+  const r = room(),
+    p = r.players[1];
+  const spots = [
+    { type: "tabletopPlant", x: -3.45, z: 1.7, y: 1.09 },
+    { type: "notebook", x: -4, z: 0.3, y: 1.09 },
+    { type: "cup", x: -10.4, z: -9.45, y: 1.345 },
+  ];
+  for (const spot of spots) {
+    Object.assign(p, { ...spot, type: "cone", changeAt: 0 });
+    const selected = nearestCopyProp(p);
+    assert.equal(selected?.type, spot.type);
+    assert.ok(selected.y > 1);
+    assert.equal(act(r, p, "change", 6000).event?.kind, "poof");
+    assert.equal(p.type, spot.type);
+    assert.equal(p.y, spot.y);
+    assert.ok(
+      canStand(p.x, p.z, TYPES[p.type].radius, p.y, TYPES[p.type].height),
+    );
+  }
+  assert.ok(
+    PROPS.filter((p) => p.y > 0).every((p) =>
+      ["tabletopPlant", "cup", "notebook"].includes(p.type),
+    ),
+  );
+  assert.equal(
+    nearestCopyProp({ x: -3.45, z: 1.15, y: 10, type: "cone" }),
+    undefined,
+  );
+  assert.equal(TYPES.table, undefined);
+});
+
+test("small elevated disguises are hit at their height, not below the surface", () => {
+  const target = {
+    id: "small",
+    x: 0,
+    y: 1.345,
+    z: 3,
+    type: "cup",
+    role: "prop",
+    connected: true,
+  };
+  const hunter = { id: "hunter", x: 0, z: 7, role: "hunter" };
+  assert.equal(
+    traceShot([target], hunter, "glock", 0, 0.02).hits.get("small"),
+    50,
+  );
+  assert.equal(traceShot([target], hunter, "glock", 0, 0.3).hits.size, 0);
+  const p = { x: -3.7, z: 1.6, y: 1.09, role: "prop", type: "notebook" };
+  for (let i = 0; i < 30; i++) movePlayer(p, { x: 0, z: 0 });
+  assert.equal(p.y, 1.09, "small props stay on the tabletop");
 });
