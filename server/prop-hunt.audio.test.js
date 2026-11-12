@@ -181,6 +181,19 @@ test("persistent gun output survives full magazines and shotgun has distinct bla
         .slice(from * f.ctx.sampleRate, to * f.ctx.sampleRate)
         .reduce((sum, v) => sum + v * v, 0);
     assert.ok(energy(0, 0.01) > 0.01, "blast starts immediately");
+    if (weapon === "glock") {
+      const tail = samples.slice(
+        0.025 * f.ctx.sampleRate,
+        0.09 * f.ctx.sampleRate,
+      );
+      const rms = Math.sqrt(
+        tail.reduce((sum, v) => sum + v * v, 0) / tail.length,
+      );
+      assert.ok(
+        rms > 0.035,
+        "Glock has a sustained audible report, not only a short click",
+      );
+    }
     if (weapon === "shotgun") {
       assert.ok(energy(0.32, 0.38) > energy(0.24, 0.3), "pump back");
       assert.ok(energy(0.49, 0.55) > energy(0.41, 0.47), "pump forward");

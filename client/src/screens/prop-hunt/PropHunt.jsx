@@ -558,6 +558,22 @@ function Joystick({ apiRef }) {
   );
 }
 
+function RoundMessage({ message }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(false), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div
+      className={`ph-round-message ${visible ? "" : "ph-dismissed"}`}
+      role="status"
+    >
+      {message}
+    </div>
+  );
+}
+
 export default function PropHunt({ onBack }) {
   const [token] = useState(sessionToken),
     [room, setRoom] = useState(null),
@@ -939,9 +955,10 @@ export default function PropHunt({ onBack }) {
               </span>
             </div>
           </div>
-          <div className="ph-round-message" key={room.message}>
-            {room.message}
-          </div>
+          <RoundMessage
+            key={`${room.code}-${room.round}-${room.message}`}
+            message={room.message}
+          />
           {hud.active && hunter && room.phase === "hunt" && (
             <div
               className={`ph-crosshair ${me?.weapon === "shotgun" ? "ph-spread" : ""} ${hud.hit ? "ph-hit" : ""} ${hud.hitCaught ? "ph-catch-hit" : ""}`}

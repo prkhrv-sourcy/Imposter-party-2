@@ -26,7 +26,7 @@ export function prepareAudio(ctx) {
     const shotgun = weapon === "shotgun";
     const clip = ctx.createBuffer(
       1,
-      Math.ceil(ctx.sampleRate * (shotgun ? 0.85 : 0.22)),
+      Math.ceil(ctx.sampleRate * (shotgun ? 0.85 : 0.32)),
       ctx.sampleRate,
     );
     const samples = clip.getChannelData(0);
@@ -50,12 +50,22 @@ export function prepareAudio(ctx) {
       let value =
         attack *
         (filtered *
-          (shotgun ? 1.15 : 0.65) *
-          Math.exp(-t / (shotgun ? 0.065 : 0.022)) +
+          (shotgun ? 1.15 : 1.0) *
+          Math.exp(-t / (shotgun ? 0.065 : 0.048)) +
           Math.sin(phase) *
             (shotgun ? 0.65 : 0.5) *
-            Math.exp(-t / (shotgun ? 0.075 : 0.028)) +
+            Math.exp(-t / (shotgun ? 0.075 : 0.04)) +
           noise * (shotgun ? 0.7 : 0.4) * Math.exp(-t / 0.004));
+      if (!shotgun) {
+        // Keep the pistol report audible beyond its initial transient.
+        value += filtered * 0.16 * Math.exp(-t / 0.085);
+        const slide = t - 0.075;
+        if (slide >= 0)
+          value +=
+            Math.min(1, slide / 0.002) *
+            Math.exp(-slide / 0.012) *
+            (noise * 0.1 + Math.sin(2 * Math.PI * 1600 * slide) * 0.04);
+      }
       if (shotgun) {
         value += filtered * 0.14 * Math.exp(-t / 0.18);
         for (const [delay, gain] of [
@@ -80,7 +90,7 @@ export function prepareAudio(ctx) {
       samples[i] = value * fade;
       peak = Math.max(peak, Math.abs(samples[i]));
     }
-    const gain = (shotgun ? 0.95 : 0.8) / Math.max(peak, 0.001);
+    const gain = (shotgun ? 0.95 : 0.92) / Math.max(peak, 0.001);
     for (let i = 0; i < samples.length; i++) samples[i] *= gain;
     shots[weapon] = clip;
   }
