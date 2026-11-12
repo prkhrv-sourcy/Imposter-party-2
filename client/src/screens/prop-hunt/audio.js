@@ -29,13 +29,14 @@ export function sound(
 ) {
   if (!ctx || ctx.state !== "running" || volume < 0.015) return;
   const resources = prepareAudio(ctx);
-  const start = ctx.currentTime + 0.005;
+  const start = ctx.currentTime;
   const output = ctx.createGain(),
     stereo = ctx.createStereoPanner();
-  output.gain.value = Math.min(1, volume) * 0.48;
+  output.gain.value = Math.min(1, volume) * (kind === "shot" ? 0.3 : 0.48);
   stereo.pan.value = pan;
   output.connect(stereo);
-  stereo.connect(resources.mixer);
+  // Gun transients bypass compressor look-ahead to keep the trigger responsive.
+  stereo.connect(kind === "shot" ? ctx.destination : resources.mixer);
   let voices = 0;
   const ended = () => {
     if (--voices === 0) {

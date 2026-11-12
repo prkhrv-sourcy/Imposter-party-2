@@ -64,6 +64,9 @@ export function startRound(room, now = Date.now()) {
         caught: false,
         vx: 0,
         vz: 0,
+        y: 0,
+        vy: 0,
+        jumpHeld: false,
         yaw: 0,
         queue: [],
         input: { x: 0, z: 0 },
@@ -139,6 +142,7 @@ export function act(room, p, request, now = Date.now()) {
           owner: p.id,
           weapon: p.weapon,
           x: p.x,
+          y: p.y || 0,
           z: p.z,
         },
       };
@@ -184,13 +188,19 @@ export function act(room, p, request, now = Date.now()) {
         target.health = Math.max(0, target.health - damage);
         if (target.health === 0) {
           target.caught = true;
-          target.vx = target.vz = 0;
+          target.vx = target.vz = target.vy = target.y = 0;
           target.tauntAt = now;
           p.score += 25;
           p.captures++;
           room.message = `${p.name} caught ${target.name}!`;
         }
-        impacts.push({ id, x: target.x, z: target.z, caught: target.caught });
+        impacts.push({
+          id,
+          x: target.x,
+          y: target.y || 0,
+          z: target.z,
+          caught: target.caught,
+        });
       }
       if (
         room.players
@@ -204,6 +214,7 @@ export function act(room, p, request, now = Date.now()) {
           owner: p.id,
           weapon: p.weapon,
           x: p.x,
+          y: p.y || 0,
           z: p.z,
           origin,
           rays,
@@ -225,6 +236,7 @@ export function act(room, p, request, now = Date.now()) {
         event: {
           kind: "scan",
           x: p.x,
+          y: p.y || 0,
           z: p.z,
           hot: targets.length > 0,
           owner: p.id,
@@ -237,12 +249,12 @@ export function act(room, p, request, now = Date.now()) {
         (t) => distance(p, t) < 2.7 && lineOfSight(p, t),
       ).sort((a, b) => distance(p, a) - distance(p, b))[0];
       if (!prop) return { error: "Get closer to an object to copy it." };
-      if (!canStand(p.x, p.z, TYPES[prop.type].radius))
+      if (!canStand(p.x, p.z, TYPES[prop.type].radius, p.y || 0))
         return { error: "Move into a little more space first." };
       p.type = prop.type;
       p.yaw = prop.yaw;
       p.changeAt = now + 2500;
-      return { event: { kind: "poof", x: p.x, z: p.z } };
+      return { event: { kind: "poof", x: p.x, y: p.y || 0, z: p.z } };
     }
     if (action === "taunt" && now >= p.tauntAt - 16000) {
       p.tauntAt = now + 20000;
@@ -251,6 +263,7 @@ export function act(room, p, request, now = Date.now()) {
         event: {
           kind: "taunt",
           x: p.x,
+          y: p.y || 0,
           z: p.z,
           name: "Somewhere nearby…",
           tauntId: p.tauntId,
@@ -271,6 +284,9 @@ export function act(room, p, request, now = Date.now()) {
           health: 100,
           vx: 0,
           vz: 0,
+          y: 0,
+          vy: 0,
+          jumpHeld: false,
           tauntAt: now + 20000,
         }),
       );
@@ -316,6 +332,9 @@ export function setupPropHunt(io) {
           (n) => Math.round(n * 1000) / 1000,
         ),
         p.ack || 0,
+        Math.round((p.y || 0) * 1000) / 1000,
+        Math.round((p.vy || 0) * 1000) / 1000,
+        !!p.jumpHeld,
       ]),
     });
   const event = (room, data) =>
@@ -493,6 +512,7 @@ export function setupPropHunt(io) {
         x: Math.max(-1, Math.min(1, data.x)),
         z: Math.max(-1, Math.min(1, data.z)),
         yaw: data.yaw % (Math.PI * 2),
+        jump: data.jump === true,
       });
       p.lastInputAt = Date.now();
     });
@@ -573,7 +593,8 @@ export function setupPropHunt(io) {
             (p) => p.role === "prop" && !p.caught,
           )) {
             const types = Object.keys(TYPES).filter(
-              (t) => t !== p.type && canStand(p.x, p.z, TYPES[t].radius),
+              (t) =>
+                t !== p.type && canStand(p.x, p.z, TYPES[t].radius, p.y || 0),
             );
             if (types.length)
               p.type = types[Math.floor(Math.random() * types.length)];
@@ -617,7 +638,13 @@ export function setupPropHunt(io) {
           }
           if (p.role === "prop" && r.phase === "hunt" && now >= p.tauntAt) {
             p.tauntAt = now + 20000;
-            event(r, { kind: "taunt", x: p.x, z: p.z, tauntId: p.tauntId });
+            event(r, {
+              kind: "taunt",
+              x: p.x,
+              y: p.y || 0,
+              z: p.z,
+              tauntId: p.tauntId,
+            });
           }
         }
       }
@@ -625,7 +652,10 @@ export function setupPropHunt(io) {
         r.positionHistory.push({
           at: now,
           positions: new Map(
-            r.players.map((p) => [p.id, { x: p.x, z: p.z, type: p.type }]),
+            r.players.map((p) => [
+              p.id,
+              { x: p.x, y: p.y || 0, z: p.z, type: p.type },
+            ]),
           ),
         });
         while (r.positionHistory.length > 8) r.positionHistory.shift();

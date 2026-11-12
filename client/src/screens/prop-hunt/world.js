@@ -142,7 +142,19 @@ export const PROPS = [...courtyardProps, ...outerProps].map(
 );
 export const SOLIDS = [
   ...WALLS,
-  ...FURNITURE,
+  ...FURNITURE.flatMap((f) =>
+    f.kind === "bench"
+      ? [
+          { ...f, h: 0.61 },
+          { ...f, z: f.z - 0.35, d: 0.12, h: 1.235 },
+        ]
+      : [
+          {
+            ...f,
+            h: f.kind === "table" ? 1.09 : f.kind === "counter" ? 1.345 : f.h,
+          },
+        ],
+  ),
   ...PROPS.map((p) => ({
     ...p,
     w: TYPES[p.type].radius * 2,
@@ -153,12 +165,15 @@ export const SOLIDS = [
 export const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 export const radius = (p) =>
   p.role === "hunter" ? 0.34 : TYPES[p.type]?.radius || 0.4;
-export function canStand(x, z, r = 0.4) {
+export function canStand(x, z, r = 0.4, y = 0) {
   return (
     Math.abs(x) < BOUNDS - r &&
     Math.abs(z) < BOUNDS - r &&
     !SOLIDS.some(
-      (s) => Math.abs(x - s.x) < s.w / 2 + r && Math.abs(z - s.z) < s.d / 2 + r,
+      (s) =>
+        s.h > y + 0.001 &&
+        Math.abs(x - s.x) < s.w / 2 + r &&
+        Math.abs(z - s.z) < s.d / 2 + r,
     )
   );
 }
@@ -174,13 +189,53 @@ export function movePlayer(p, input, dt = STEP, slow = false) {
   const blend = 1 - Math.exp(-18 * dt);
   p.vx = (p.vx || 0) + (x * speed - (p.vx || 0)) * blend;
   p.vz = (p.vz || 0) + (z * speed - (p.vz || 0)) * blend;
-  const r = radius(p),
-    nx = p.x + p.vx * dt,
+  const r = radius(p);
+  p.y ||= 0;
+  p.vy ||= 0;
+  const supported =
+    p.y === 0 ||
+    SOLIDS.some(
+      (s) =>
+        Math.abs(p.y - s.h) < 0.001 &&
+        Math.abs(p.x - s.x) < s.w / 2 + r &&
+        Math.abs(p.z - s.z) < s.d / 2 + r,
+    );
+  if (
+    input.jump === true &&
+    !p.jumpHeld &&
+    supported &&
+    p.vy === 0 &&
+    p.role === "prop" &&
+    !p.caught
+  )
+    p.vy = 8.8;
+  p.jumpHeld = input.jump === true;
+  const previousY = p.y;
+  p.vy -= 22 * dt;
+  p.y = Math.max(0, p.y + p.vy * dt);
+  // Resolve horizontal motion at the higher foot position before landing on edges.
+  const collisionY = Math.max(previousY, p.y);
+  const nx = p.x + p.vx * dt,
     nz = p.z + p.vz * dt;
-  if (canStand(nx, p.z, r)) p.x = nx;
+  if (canStand(nx, p.z, r, collisionY)) p.x = nx;
   else p.vx = 0;
-  if (canStand(p.x, nz, r)) p.z = nz;
+  if (canStand(p.x, nz, r, collisionY)) p.z = nz;
   else p.vz = 0;
+  if (p.vy <= 0) {
+    let floor = 0;
+    for (const s of SOLIDS)
+      if (
+        s.h <= previousY + 0.001 &&
+        s.h >= p.y &&
+        Math.abs(p.x - s.x) < s.w / 2 + r &&
+        Math.abs(p.z - s.z) < s.d / 2 + r
+      )
+        floor = Math.max(floor, s.h);
+    if (p.y <= floor) {
+      p.y = floor;
+      p.vy = 0;
+    }
+  }
   if (Number.isFinite(input.yaw)) p.yaw = input.yaw;
 }
 export function lineOfSight(a, b) {
@@ -307,7 +362,7 @@ const SHOT_SOLIDS = [
 ];
 export function traceShot(players, shooter, weapon, yaw, pitch) {
   const config = WEAPONS[weapon],
-    origin = { x: shooter.x, y: 1.65, z: shooter.z },
+    origin = { x: shooter.x, y: (shooter.y || 0) + 1.65, z: shooter.z },
     hits = new Map(),
     rays = [];
   for (let i = 0; i < config.pellets; i++) {
@@ -332,7 +387,7 @@ export function traceShot(players, shooter, weapon, yaw, pitch) {
       const t = rayBox(
         origin,
         dir,
-        { x: p.x, z: p.z, w: r * 2, d: r * 2, h },
+        { x: p.x, y: p.y || 0, z: p.z, w: r * 2, d: r * 2, h },
         closest,
       );
       if (t !== null && t < closest) {

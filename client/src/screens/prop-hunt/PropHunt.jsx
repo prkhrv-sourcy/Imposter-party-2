@@ -64,6 +64,7 @@ function World({
       yaw = 0,
       pitch = 0.1,
       drag = null,
+      jumpQueued = false,
       joy = { x: 0, z: 0 },
       audio = null,
       hudAt = 0,
@@ -84,6 +85,10 @@ function World({
     ).matches;
     function action(type) {
       if (!active || !socketRef.current?.connected) return;
+      if (type === "jump") {
+        if (local?.role === "prop" && !local.caught) jumpQueued = true;
+        return;
+      }
       let request = type;
       if (type === "shoot") {
         const s = stateRef.current,
@@ -92,7 +97,6 @@ function World({
         if (
           s?.phase !== "hunt" ||
           local?.role !== "hunter" ||
-          s.serverTime < local.shotAt ||
           s.serverTime < local.reloadAt ||
           performance.now() - lastShot < config.cooldown
         )
@@ -102,11 +106,14 @@ function World({
           return;
         }
         lastShot = performance.now();
+        if (!mutedRef.current) sound(audio, "shot", 0, weapon);
         request = { type, yaw, pitch, shotTime: s.serverTime - 70 };
         local.ammo = { ...local.ammo, [weapon]: local.ammo[weapon] - 1 };
         const targets = s.players.map((p) => {
           const visible = world.players.get(p.id)?.group.position;
-          return visible ? { ...p, x: visible.x, z: visible.z } : p;
+          return visible
+            ? { ...p, x: visible.x, y: visible.y, z: visible.z }
+            : p;
         });
         const { origin, rays } = traceShot(
           targets,
@@ -134,6 +141,7 @@ function World({
       active = false;
       keys.clear();
       feedback.length = 0;
+      jumpQueued = false;
       joy = { x: 0, z: 0 };
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     }
@@ -169,7 +177,7 @@ function World({
           pending = [];
           yaw = p.role === "hunter" ? p.yaw || 0 : Math.atan2(p.x, p.z);
           pitch = 0.1;
-          renderPos.set(p.x, 0, p.z);
+          renderPos.set(p.x, p.y || 0, p.z);
         } else {
           const teleported = local?.caught !== p.caught;
           pending = pending.filter((i) => i.seq > p.ack);
@@ -198,7 +206,7 @@ function World({
         hitCaught = e.impacts.some((h) => h.caught);
         if (!mutedRef.current) sound(audio, hitCaught ? "catch" : "hit");
       }
-      if (!mutedRef.current && !confirmation) {
+      if (!mutedRef.current && !confirmation && !e.predicted) {
         let pan = 0,
           volume = 1;
         if (local && Number.isFinite(e.x)) {
@@ -247,6 +255,7 @@ function World({
       keys.add(e.code);
       if (e.repeat) return;
       const p = local;
+      if (e.code === "Space") action("jump");
       if (e.code === "KeyE") action(p?.role === "hunter" ? "shoot" : "change");
       if (e.code === "KeyQ") action(p?.role === "hunter" ? "scan" : "taunt");
       if (e.code === "KeyR") action(p?.role === "hunter" ? "reload" : "rescue");
@@ -265,9 +274,13 @@ function World({
     };
     const pointerDown = (e) => {
       if (!active) return;
-      if (document.pointerLockElement === canvas) {
-        if (e.button === 0 && local?.role === "hunter") action("shoot");
-      } else {
+      if (
+        e.button === 0 &&
+        e.pointerType !== "touch" &&
+        local?.role === "hunter"
+      )
+        action("shoot");
+      if (document.pointerLockElement !== canvas) {
         drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
         canvas.setPointerCapture(e.pointerId);
       }
@@ -289,15 +302,7 @@ function World({
       yaw -= dx * 0.0025;
       pitch = Math.max(-1, Math.min(1.1, pitch + dy * 0.0025));
     };
-    const pointerUp = (e) => {
-      if (
-        e.type !== "pointercancel" &&
-        drag &&
-        !drag.moved &&
-        e.pointerType !== "touch" &&
-        local?.role === "hunter"
-      )
-        action("shoot");
+    const pointerUp = () => {
       drag = null;
     };
     const hidden = () => {
@@ -351,7 +356,9 @@ function World({
             z: -side * Math.sin(yaw) - forward * Math.cos(yaw),
             yaw: local.role === "hunter" ? yaw : local.yaw,
             seq: ++seq,
+            jump: jumpQueued,
           };
+          jumpQueued = false;
           if (socketRef.current?.connected) {
             socketRef.current.emit("input", input);
             pending.push(input);
@@ -365,7 +372,7 @@ function World({
         const targetX = local.caught ? jail.x : local.x,
           targetZ = local.caught ? jail.z : local.z;
         renderPos.lerp(
-          new THREE.Vector3(targetX, 0, targetZ),
+          new THREE.Vector3(targetX, local.caught ? 0 : local.y || 0, targetZ),
           1 - Math.exp(-24 * dt),
         );
         if (local.role === "hunter" && !local.caught) {
@@ -378,7 +385,7 @@ function World({
           camera.rotation.order = "YXZ";
           camera.rotation.set(-pitch, yaw, 0);
         } else {
-          look.set(renderPos.x, 0.65, renderPos.z);
+          look.set(renderPos.x, renderPos.y + 0.65, renderPos.z);
           const angle = 0.28 + pitch * 0.5,
             range = 3.6;
           desired.set(
@@ -417,11 +424,9 @@ function World({
           (x - g.position.x) * (mine ? 1 : 1 - Math.exp(-14 * dt));
         g.position.z +=
           (z - g.position.z) * (mine ? 1 : 1 - Math.exp(-14 * dt));
-        const speed = Math.hypot(other.vx || 0, other.vz || 0);
-        g.position.y =
-          !reduced && speed > 0.5 && !other.caught
-            ? Math.abs(Math.sin(now * 0.012)) * 0.035
-            : 0;
+        const y = other.caught ? 0 : mine ? renderPos.y : other.y || 0;
+        g.position.y +=
+          (y - g.position.y) * (mine ? 1 : 1 - Math.exp(-18 * dt));
         g.rotation.y = other.yaw || 0;
       }
       for (const [id, entry] of world.players)
@@ -598,6 +603,9 @@ export default function PropHunt({ onBack }) {
                 vz: m[4],
                 yaw: m[5],
                 ack: m[6],
+                y: m[7] || 0,
+                vy: m[8] || 0,
+                jumpHeld: !!m[9],
               }
             : p;
         }),
@@ -959,6 +967,11 @@ export default function PropHunt({ onBack }) {
                   <span>
                     <kbd>E</kbd> {hunter ? "Fire" : "Copy prop"}
                   </span>
+                  {!hunter && (
+                    <span>
+                      <kbd>SPACE</kbd> Jump onto furniture
+                    </span>
+                  )}
                   <span>
                     <kbd>Q</kbd> {hunter ? "Scan" : "Taunt"}
                   </span>
@@ -1031,10 +1044,26 @@ export default function PropHunt({ onBack }) {
               <small>
                 {hunter
                   ? "Left click / E fire · R reload · 1 / 2 switch"
-                  : "Stand still to blend in. Your disguise keeps its rotation."}
+                  : "Space to jump onto furniture · Stand still to blend in."}
               </small>
             </div>
             <div className="ph-actions">
+              {!hunter && (
+                <button
+                  disabled={!hud.active || me?.caught}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    apiRef.current?.action("jump");
+                  }}
+                  onClick={(e) => {
+                    if (e.detail === 0) apiRef.current?.action("jump");
+                  }}
+                >
+                  <kbd>SPACE</kbd>
+                  <strong>Jump</strong>
+                  <small>Reach higher spots</small>
+                </button>
+              )}
               <button
                 disabled={
                   !hud.active ||
@@ -1044,9 +1073,16 @@ export default function PropHunt({ onBack }) {
                   (hunter &&
                     (me?.reloadAt > serverNow || !me?.ammo?.[me?.weapon]))
                 }
-                onClick={() =>
-                  apiRef.current?.action(hunter ? "shoot" : "change")
-                }
+                onPointerDown={(e) => {
+                  if (hunter) {
+                    e.preventDefault();
+                    apiRef.current?.action("shoot");
+                  }
+                }}
+                onClick={(e) => {
+                  if (!hunter || e.detail === 0)
+                    apiRef.current?.action(hunter ? "shoot" : "change");
+                }}
               >
                 <kbd>E</kbd>
                 <strong>{hunter ? "Fire" : "Copy prop"}</strong>

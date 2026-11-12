@@ -26,7 +26,9 @@ function audioContext() {
       attack: param(),
       release: param(),
       disconnects: 0,
-      connect() {},
+      connect(target) {
+        this.target = target;
+      },
       disconnect() {
         this.disconnects++;
       },
@@ -77,6 +79,8 @@ test("gun layers share one audio timestamp, reuse warmed noise, and clean up on 
   assert.equal(f.buffers, 1);
   sound(f.ctx, "shot", 0, "glock");
   assert.equal(f.reads, 1);
+  assert.equal(f.starts[0].at, 10.001);
+  assert.equal(f.nodes.find((n) => n.kind === "pan").target, f.ctx.destination);
   assert.equal(f.buffers, 1);
   assert.equal(new Set(f.starts.slice(0, 3).map((s) => s.at)).size, 1);
   const output = f.nodes.find((n) => n.kind === "gain");

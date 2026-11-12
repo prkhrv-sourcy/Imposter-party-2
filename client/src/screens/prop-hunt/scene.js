@@ -702,7 +702,12 @@ export function createScene(container, { low = false } = {}) {
         effects.push({ mesh: spark, age: 0, life: 0.16, stationary: true });
       }
       for (const hit of e.impacts)
-        effect({ kind: hit.caught ? "catch" : "hit", x: hit.x, z: hit.z });
+        effect({
+          kind: hit.caught ? "catch" : "hit",
+          x: hit.x,
+          y: hit.y,
+          z: hit.z,
+        });
       return;
     }
     if (e.kind === "reload") return;
@@ -720,7 +725,7 @@ export function createScene(container, { low = false } = {}) {
       geometry("fxring", () => new THREE.TorusGeometry(0.6, 0.035, 6, 48)),
       color,
       e.x,
-      0.1,
+      (e.y || 0) + 0.1,
       e.z,
     );
     ring.rotation.x = -Math.PI / 2;
@@ -738,7 +743,7 @@ export function createScene(container, { low = false } = {}) {
     });
     if (["poof", "catch", "rescue", "taunt", "help"].includes(e.kind))
       for (let i = 0; i < 10; i++) {
-        const m = ball(scene, 0.07, color, e.x, 0.5, e.z);
+        const m = ball(scene, 0.07, color, e.x, (e.y || 0) + 0.5, e.z);
         m.material = new THREE.MeshBasicMaterial({ color, transparent: true });
         const a = (i * Math.PI) / 5;
         effects.push({

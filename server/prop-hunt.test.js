@@ -220,6 +220,13 @@ test("socket lifecycle: validation, rooms, host-only start, reconnect, leave and
   const b2 = await connect(secret);
   assert.equal(r.players.find((p) => p.id === pid).connected, true);
   r.phase = "hunt";
+  const jumper = r.players.find(p => p.id === pid);
+  const motionPacket = new Promise(resolve => b2.once("motion", resolve));
+  b2.emit("input", {seq:1,x:0,z:0,yaw:0,jump:true,y:100,vy:100});
+  await new Promise(resolve => setTimeout(resolve,100));
+  assert.ok(jumper.y > 0 && jumper.y < 2, "server computes jump height");
+  const packet = await motionPacket;
+  assert.equal(packet.players.find(p=>p[0]===pid).length,10);
   const h = r.players[0];
   const before = h.x;
   for (let i = 1; i < 50; i++)
@@ -278,4 +285,54 @@ test("online shots compensate for recent motion but cannot rewind beyond 200 ms"
   h.shotAt = 0;
   act(r, h, { type: "shoot", yaw: 0, pitch: 0.3, shotTime: 1900 }, 2400);
   assert.equal(target.health, 100);
+});
+
+test("props jump onto tables, remain supported, fall off edges, and cannot double-jump", () => {
+  const p = { x: -3.7, z: 4, role: "prop", type: "cone" };
+  let peak = 0;
+  for (let i = 0; i < 30; i++) {
+    movePlayer(p, { x: 0, z: i < 20 ? -1 : 0, jump: i === 0 || i === 8 });
+    peak = Math.max(peak, p.y);
+  }
+  for (let i = 0; i < 30; i++) movePlayer(p, { x: 0, z: 0 });
+  assert.ok(peak > 1.4 && peak < 1.9, `single jump peak ${peak}`);
+  assert.equal(p.y, 1.09);
+  assert.equal(p.vy, 0);
+  assert.ok(canStand(p.x, p.z, TYPES.cone.radius, p.y));
+  for (let i = 0; i < 60; i++) movePlayer(p, { x: 1, z: 0 });
+  assert.equal(p.y, 0);
+  assert.equal(p.vy, 0);
+  const held = { x: 0, z: 7, role: "prop", type: "cone" };
+  for (let i = 0; i < 90; i++) movePlayer(held, { x: 0, z: 0, jump: true });
+  assert.equal(held.y, 0, "holding jump cannot bounce repeatedly");
+  for (const extra of [{ role: "hunter" }, { role: "prop", caught: true }]) {
+    const blocked = { x: 0, z: 7, type: "cone", ...extra };
+    movePlayer(blocked, { x: 0, z: 0, jump: true });
+    assert.equal(blocked.y, 0);
+  }
+});
+
+test("jumping respects tall walls and hits use the prop's actual elevation", () => {
+  const p = {
+    id: "prop",
+    x: -6,
+    z: -5,
+    role: "prop",
+    type: "cone",
+    connected: true,
+  };
+  for (let i = 0; i < 30; i++) movePlayer(p, { x: -1, z: 0, jump: i === 0 });
+  assert.ok(p.x > -6.5);
+  const target = { ...p, x: 0, z: 3, y: 2 };
+  const shooter = { id: "hunter", x: 0, z: 7, role: "hunter" };
+  assert.equal(traceShot([target], shooter, "glock", 0, 0.25).hits.size, 0);
+  assert.equal(
+    traceShot([target], shooter, "glock", 0, -0.2).hits.get("prop"),
+    50,
+  );
+  const r = room();
+  r.players[1].y = 2;
+  r.players[1].vy = 4;
+  startRound(r, 5000);
+  assert.ok(r.players.every((p) => p.y === 0 && p.vy === 0 && !p.jumpHeld));
 });
