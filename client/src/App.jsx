@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { socket, playerId } from './socket';
 import HubScreen from './screens/HubScreen';
 import HomeScreen from './screens/HomeScreen';
@@ -7,6 +7,8 @@ import GameScreen from './screens/GameScreen';
 import FamousFacesHome from './screens/famous-faces/FamousFacesHome';
 import FamousFacesLobby from './screens/famous-faces/FamousFacesLobby';
 import FamousFacesGame from './screens/famous-faces/FamousFacesGame';
+
+const PropHunt = lazy(() => import('./screens/prop-hunt/PropHunt'));
 
 function getInitialGame() {
   const params = new URLSearchParams(window.location.search);
@@ -185,6 +187,14 @@ export default function App() {
   // Figure out which game type we're dealing with
   const gameType = room?.gameType || null;
   const isFamousFaces = gameType === 'famous-faces' || currentGame === 'famous-faces';
+
+  if (currentGame === 'prop-hunt') {
+    return (
+      <Suspense fallback={<div className="min-h-screen grid place-items-center text-white">Opening the courtyard…</div>}>
+        <PropHunt onBack={handleBackToHub} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="relative">

@@ -2,6 +2,17 @@ import React from 'react';
 
 const GAMES = [
   {
+    id: 'prop-hunt',
+    name: 'Prop Party',
+    icon: '🪴',
+    tagline: 'Nice plant. Is that you?',
+    description: 'Become the furniture in a sprawling 3D district. Fool the hunter, rescue your friends, and hide in plain sight.',
+    gradient: 'from-emerald-500 to-teal-600',
+    glow: 'shadow-emerald-500/30',
+    players: '2-30',
+    time: '3 min rounds',
+  },
+  {
     id: 'imposter-party',
     name: 'Imposter Party',
     icon: '\u{1F47F}',
@@ -37,7 +48,7 @@ export default function HubScreen({ onSelectGame }) {
         <p className="text-white/50 mt-4 text-lg">Pick a game and party with your friends!</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl animate-slide-up">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl animate-slide-up">
         {GAMES.map((game, i) => (
           <button
             key={game.id}
