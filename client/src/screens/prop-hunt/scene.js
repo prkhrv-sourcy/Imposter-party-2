@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { WALLS, FURNITURE, PROPS, TYPES, JAIL } from "./world";
+import { WALLS, FURNITURE, PROPS, TYPES, JAIL, BLIND } from "./world";
 
 export function createScene(container, { low = false } = {}) {
   const scene = new THREE.Scene();
@@ -672,6 +672,13 @@ export function createScene(container, { low = false } = {}) {
   }
   const effects = [];
   function effect(e) {
+    if (e.kind === "blindThrow") {
+      const start = e.path[0], end = e.path[e.path.length - 1];
+      const grenade = ball(scene, 0.13, "#a3e5d4", start.x, start.y, start.z);
+      grenade.material = new THREE.MeshBasicMaterial({ color: "#a3e5d4", transparent: true });
+      effects.push({ mesh: grenade, age: 0, life: Math.max(0.01, end.t), path: e.path });
+      return;
+    }
     if (e.kind === "fire") {
       recoil = e.weapon === "shotgun" ? 1.4 : 0.65;
       flashTime = 0.055;
@@ -746,6 +753,7 @@ export function createScene(container, { low = false } = {}) {
       age: 0,
       life: e.kind === "taunt" ? 2 : 1.2,
       ring: true,
+      blind: e.kind === "blindBurst",
     });
     if (["poof", "catch", "rescue", "taunt", "help"].includes(e.kind))
       for (let i = 0; i < 10; i++) {
@@ -780,7 +788,13 @@ export function createScene(container, { low = false } = {}) {
         continue;
       }
       e.mesh.material.opacity = 1 - e.age / e.life;
-      if (e.ring) e.mesh.scale.setScalar(1 + e.age * 4);
+      if (e.path) {
+        const nextIndex = e.path.findIndex((point) => point.t >= e.age);
+        const next = e.path[Math.max(1, nextIndex)], prev = e.path[Math.max(0, nextIndex - 1)];
+        const t = Math.min(1, (e.age - prev.t) / Math.max(0.001, next.t - prev.t));
+        e.mesh.position.set(prev.x + (next.x - prev.x) * t, prev.y + (next.y - prev.y) * t, prev.z + (next.z - prev.z) * t);
+      }
+      else if (e.ring) e.mesh.scale.setScalar(e.blind ? BLIND.radius / 0.6 : 1 + e.age * 4);
       else if (!e.stationary) {
         e.mesh.position.x += e.vx * dt;
         e.mesh.position.z += e.vz * dt;

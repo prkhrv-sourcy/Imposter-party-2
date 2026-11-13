@@ -19,6 +19,8 @@ import {
 } from "./world";
 import { sound, prepareAudio } from "./audio";
 import { tauntName } from "./taunts";
+import Minimap from "./Minimap.jsx";
+import { minimapPlayers } from "./minimap.js";
 import "./prop-hunt.css";
 
 function sessionToken() {
@@ -96,6 +98,7 @@ function World({
         return;
       }
       let request = type;
+      if (type === "blind") request = { type, yaw, pitch };
       if (type === "shoot") {
         if (!mutedRef.current && audio?.state !== "running") {
           unlock();
@@ -283,6 +286,7 @@ function World({
       if (e.repeat) return;
       const p = local;
       if (e.code === "KeyF" && p?.role === "prop") action("decoy");
+      if (e.code === "KeyG" && p?.role === "prop") action("blind");
       if (e.code === "Space") action("jump");
       if (e.code === "KeyE") action(p?.role === "hunter" ? "shoot" : "change");
       if (e.code === "KeyQ") action(p?.role === "hunter" ? "scan" : "taunt");
@@ -487,6 +491,7 @@ function World({
         const nearest = local ? nearestCopyProp(local) : null;
         onHud({
           active,
+          mapPlayers: playing ? minimapPlayers(s.players, token, renderPos, yaw) : [],
           nearest: nearest ? TYPES[nearest.type].name : null,
           nearJail: local && distance(local, JAIL) < 2.3,
           hit: now < hitUntil,
@@ -999,7 +1004,7 @@ export default function PropHunt({ onBack }) {
                 <p>
                   {hunter
                     ? "Aim at suspicious objects. Left click fires; R reloads. Press 1 / 2 to switch weapons. Shotgun unlocks after 2 captures or 45 seconds."
-                    : "Copy a nearby object, find a believable spot, and rescue your friends."}
+                    : "Copy a nearby object, find a believable spot, and rescue your friends. Aim your view and press G to throw your one blind grenade: 3m radius, 5 seconds."}
                 </p>
                 <div className="ph-control-legend">
                   <span>
@@ -1014,6 +1019,9 @@ export default function PropHunt({ onBack }) {
                   <span>
                     <kbd>SPACE</kbd> Jump onto furniture
                   </span>
+                  {!hunter && (
+                    <span><kbd>G</kbd> Blind grenade · 1 per round</span>
+                  )}
                   {!hunter && (
                     <span>
                       <kbd>F</kbd> Decoy taunt · 25s cooldown
@@ -1095,6 +1103,16 @@ export default function PropHunt({ onBack }) {
               </small>
             </div>
             <div className="ph-actions">
+              {!hunter && (
+                <button
+                  disabled={!hud.active || me?.caught || room.phase !== "hunt" || me?.blinds !== 1}
+                  onClick={() => apiRef.current?.action("blind")}
+                >
+                  <kbd>G</kbd>
+                  <strong>Blind grenade</strong>
+                  <small>{me?.blinds === 0 ? "Used this round" : room.phase !== "hunt" ? "Hunt only" : "1 left · 3m · 5s"}</small>
+                </button>
+              )}
               {!hunter && (
                 <button
                   disabled={
@@ -1213,6 +1231,13 @@ export default function PropHunt({ onBack }) {
             </span>
             <span>ESC TO RELEASE CURSOR</span>
           </div>
+          <Minimap players={hud.mapPlayers} />
+          {hunter && me?.blindUntil > serverNow && (
+            <div className="ph-blinded" role="status" aria-label="Blinded for five seconds">
+              <strong>BLINDED</strong>
+              <span>Vision returns in {Math.ceil((me.blindUntil - serverNow) / 1000)}s</span>
+            </div>
+          )}
         </>
       )}
       {room?.phase === "results" && (

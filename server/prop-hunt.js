@@ -1,6 +1,9 @@
 import { randomBytes, createHash, randomInt } from "node:crypto";
 import {
   STEP,
+  BLIND,
+  blindThrow,
+  inBlindRadius,
   MAX_PLAYERS,
   HIDE_SECONDS,
   HUNT_SECONDS,
@@ -28,6 +31,7 @@ export function startRound(room, now = Date.now()) {
   room.endsAt = now + HIDE_SECONDS * 1000;
   room.huntStartedAt = 0;
   room.positionHistory = [];
+  room.blindGrenades = [];
   room.winner = null;
   room.shuffled = false;
   room.shuffleWarned = false;
@@ -76,6 +80,8 @@ export function startRound(room, now = Date.now()) {
         changeAt: 0,
         tauntAt: now + 20000,
         decoyAt: 0,
+        blinds: hunters.has(p.id) ? 0 : 1,
+        blindUntil: 0,
         slowUntil: 0,
       },
     ),
@@ -245,6 +251,17 @@ export function act(room, p, request, now = Date.now()) {
       };
     }
   } else {
+    if (action === "blind") {
+      if (room.phase !== "hunt") return { error: "Blind grenades unlock when the hunt starts." };
+      if (p.blinds !== 1) return { error: "You already used your blind this round." };
+      if (!Number.isFinite(request.yaw) || !Number.isFinite(request.pitch) || Math.abs(request.pitch) > 1.3)
+        return { error: "Invalid aim." };
+      const path = blindThrow(p, request.yaw, request.pitch);
+      const end = path[path.length - 1];
+      p.blinds = 0;
+      room.blindGrenades.push({ ...end, at: now + end.t * 1000 });
+      return { event: { kind: "blindThrow", path, owner: p.id } };
+    }
     if (action === "change" && now >= p.changeAt) {
       const prop = nearestCopyProp(p);
       if (!prop) return { error: "Get closer to an object to copy it." };
@@ -326,6 +343,22 @@ export function act(room, p, request, now = Date.now()) {
     }
   }
   return {};
+}
+
+export function detonateBlinds(room, now = Date.now()) {
+  const blasts = [];
+  room.blindGrenades = (room.blindGrenades || []).filter((grenade) => {
+    if (room.phase !== "hunt") return false;
+    if (now < grenade.at) return true;
+    for (const hunter of room.players) {
+      if (hunter.role === "hunter" && hunter.connected && !hunter.caught && inBlindRadius(grenade, hunter))
+        hunter.blindUntil = now + BLIND.duration;
+    }
+    blasts.push({ kind: "blindBurst", x: grenade.x, y: grenade.y, z: grenade.z });
+    room.dirty = true;
+    return false;
+  });
+  return blasts;
 }
 
 export function setupPropHunt(io) {
@@ -692,6 +725,9 @@ export function setupPropHunt(io) {
         while (r.positionHistory.length > 8) r.positionHistory.shift();
         if (ticks % 2 === 0) motion(r);
       }
+      const blasts = detonateBlinds(r, now);
+      for (const blast of blasts) event(r, blast);
+      if (blasts.length) broadcast(r);
       if (ticks % 30 === 0 || (r.dirty && ticks % 6 === 0)) broadcast(r);
     }
   }, STEP * 1000);

@@ -6,6 +6,7 @@ export const HIDE_SECONDS = 25;
 export const HUNT_SECONDS = 180;
 export const hunterCount = (count) => Math.max(1, Math.ceil(count / 8));
 export const JAIL = { x: 0, z: 10.6 };
+export const BLIND = { radius: 3, duration: 5000, flight: 0.8 };
 export const TYPES = {
   plant: { name: "Potted plant", radius: 0.38, height: 1.4, color: "#ea9366" },
   chair: { name: "Café chair", radius: 0.4, height: 1.2, color: "#65a698" },
@@ -459,4 +460,37 @@ export function traceShot(players, shooter, weapon, yaw, pitch) {
     });
   }
   return { origin, rays, hits };
+}
+
+export function blindThrow(player, yaw, pitch) {
+  const dir = aimDirection(yaw, pitch);
+  const origin = { x: player.x, y: (player.y || 0) + 0.8, z: player.z };
+  const path = [{ ...origin, t: 0 }];
+  for (let i = 1; i <= 24; i++) {
+    const t = i * BLIND.flight / 24;
+    const next = { x: origin.x + dir.x * 10 * t,
+      y: origin.y + (3 + dir.y * 10) * t - 10 * t * t,
+      z: origin.z + dir.z * 10 * t, t };
+    const prev = path[path.length - 1];
+    const length = Math.hypot(next.x - prev.x, next.y - prev.y, next.z - prev.z);
+    const step = { x: (next.x - prev.x) / length, y: (next.y - prev.y) / length, z: (next.z - prev.z) / length };
+    let travel = next.y < 0.1 ? (0.1 - prev.y) / step.y : length;
+    for (const box of SHOT_SOLIDS) {
+      const hit = rayBox(prev, step, box, length);
+      if (hit !== null) travel = Math.min(travel, Math.max(0, hit - 0.05));
+    }
+    path.push({ x: prev.x + step.x * travel, y: prev.y + step.y * travel,
+      z: prev.z + step.z * travel, t: prev.t + (t - prev.t) * travel / length });
+    if (travel < length) break;
+  }
+  return path;
+}
+
+export function inBlindRadius(blast, hunter) {
+  const delta = { x: hunter.x - blast.x, y: (hunter.y || 0) + 1.65 - blast.y, z: hunter.z - blast.z };
+  const length = Math.hypot(delta.x, delta.y, delta.z);
+  if (length > BLIND.radius) return false;
+  if (length < 0.001) return true;
+  const dir = { x: delta.x / length, y: delta.y / length, z: delta.z / length };
+  return !WALLS.some((wall) => rayBox(blast, dir, wall, length) !== null);
 }
