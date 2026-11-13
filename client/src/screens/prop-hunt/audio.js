@@ -220,7 +220,18 @@ export function sound(
       ended();
     };
   }
-  if (kind === "reload") {
+  if (kind === "blindThrow") {
+    noise(0.035, 0.22, 6500);
+    tone(1900, 950, 0.045, 0.12, 0, "triangle");
+    noise(0.24, 0.24, 2200, 0.04);
+    tone(380, 130, 0.2, 0.09, 0.04);
+  } else if (kind === "blindBurst") {
+    noise(0.16, 0.65, 9000);
+    tone(170, 48, 0.32, 0.5);
+    noise(0.48, 0.22, 2400, 0.025);
+    tone(1180, 620, 0.55, 0.07, 0.035);
+    tone(1770, 930, 0.42, 0.035, 0.05);
+  } else if (kind === "reload") {
     for (const delay of weapon === "shotgun"
       ? [0.03, 0.45, 1.1, 1.85]
       : [0.03, 0.55, 1.15]) {

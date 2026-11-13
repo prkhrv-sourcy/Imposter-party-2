@@ -135,6 +135,29 @@ test("silent and suspended audio schedules nothing", () => {
   sound(f.ctx, "taunt", 0, "glock", 0, "whistle");
   assert.equal(f.starts.length, 0);
 });
+
+test("grenade throw and burst have distinct spatial layers and release every audio node", () => {
+  for (const [kind, layers] of [["blindThrow", 4], ["blindBurst", 5]]) {
+    const f = audioContext();
+    prepareAudio(f.ctx);
+    const before = f.nodes.length;
+    f.starts.length = 0;
+    sound(f.ctx, kind, -0.6, "glock", 0.4);
+    assert.equal(f.starts.length, layers);
+    assert.equal(f.reads, 1, "all layers share one audio clock");
+    assert.ok(f.starts.every((s) => Number.isFinite(s.at) && s.node.stopAt > s.at));
+    const created = f.nodes.slice(before);
+    assert.equal(created.find((n) => n.kind === "pan").pan.value, -0.6);
+    assert.equal(created[0].gain.value, 0.4 * 0.48);
+    for (const s of f.starts) s.node.onended();
+    assert.ok(created.every((n) => n.disconnects === 1));
+    const count = f.starts.length;
+    sound(f.ctx, kind, 0, "glock", 0);
+    f.ctx.state = "suspended";
+    sound(f.ctx, kind);
+    assert.equal(f.starts.length, count);
+  }
+});
 test("prop taunts are randomly assigned from the full set and persist for manual and rescue calls", () => {
   const r = {
     round: 0,

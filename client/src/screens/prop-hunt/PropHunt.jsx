@@ -239,14 +239,15 @@ function World({
       if (!mutedRef.current && !confirmation && !e.predicted) {
         let pan = 0,
           volume = 1;
-        if (local && Number.isFinite(e.x)) {
-          const d = distance(local, e);
+        const source = e.kind === "blindThrow" ? e.path[0] : e;
+        if (local && Number.isFinite(source.x)) {
+          const d = distance(local, source);
           pan = Math.max(
             -1,
             Math.min(
               1,
-              ((e.x - local.x) * Math.cos(yaw) -
-                (e.z - local.z) * Math.sin(yaw)) /
+              ((source.x - local.x) * Math.cos(yaw) -
+                (source.z - local.z) * Math.sin(yaw)) /
                 10,
             ),
           );

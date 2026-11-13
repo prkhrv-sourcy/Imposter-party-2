@@ -671,12 +671,47 @@ export function createScene(container, { low = false } = {}) {
     flash.position.z = weapon === "shotgun" ? -1.24 : -0.9;
   }
   const effects = [];
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function effect(e) {
     if (e.kind === "blindThrow") {
       const start = e.path[0], end = e.path[e.path.length - 1];
-      const grenade = ball(scene, 0.13, "#a3e5d4", start.x, start.y, start.z);
-      grenade.material = new THREE.MeshBasicMaterial({ color: "#a3e5d4", transparent: true });
-      effects.push({ mesh: grenade, age: 0, life: Math.max(0.01, end.t), path: e.path });
+      const grenade = new THREE.Group();
+      cylinder(grenade, 0.16, 0.16, 0.38, "#235f58");
+      for (const y of [-0.19, 0.19])
+        cylinder(grenade, 0.18, 0.18, 0.07, "#344842", 0, y);
+      const band = cylinder(grenade, 0.168, 0.168, 0.09, "#b8ffe5");
+      band.material = mat("#b8ffe5", { emissive: "#76efc4", emissiveIntensity: 1.5 });
+      cylinder(grenade, 0.07, 0.09, 0.1, "#b5c6b7", 0, 0.25);
+      const lever = box(grenade, 0.07, 0.36, 0.06, "#d7dfcb", 0.17, 0.12);
+      lever.rotation.z = 0.3;
+      mesh(grenade, geometry("blindPin", () => new THREE.TorusGeometry(0.075, 0.014, 5, 12)), "#e2d5a8", -0.1, 0.28, 0);
+      grenade.position.set(start.x, start.y, start.z);
+      scene.add(grenade);
+      effects.push({ mesh: grenade, age: 0, life: Math.max(0.01, end.t), path: e.path, spin: !reducedMotion });
+      for (let i = 1; i <= (reducedMotion ? 0 : low ? 3 : 6); i++) {
+        const trail = ball(scene, 0.1 - i * 0.009, "#a3ffe0", start.x, start.y, start.z);
+        trail.material = new THREE.MeshBasicMaterial({ color: "#a3ffe0", transparent: true, depthWrite: false });
+        effects.push({ mesh: trail, age: 0, life: Math.max(0.01, end.t), path: e.path, lag: i * 0.025, opacity: 0.45 });
+      }
+      return;
+    }
+    if (e.kind === "blindBurst") {
+      const core = ball(scene, 0.15, "#d9ffeb", e.x, e.y, e.z);
+      core.material = new THREE.MeshBasicMaterial({ color: "#d9ffeb", transparent: true, depthWrite: false });
+      effects.push({ mesh: core, age: 0, life: 0.3, stationary: true, burst: true, opacity: 0.65 });
+      for (let i = 0; i < 2; i++) {
+        const ring = mesh(scene, geometry("blindWave", () => new THREE.TorusGeometry(1, 0.025, 6, 48)), "#a3ffe0", e.x, e.y + 0.05, e.z);
+        ring.rotation.x = i ? -Math.PI / 3 : -Math.PI / 2;
+        ring.material = new THREE.MeshBasicMaterial({ color: i ? "#ffe5ad" : "#a3ffe0", transparent: true, depthWrite: false });
+        effects.push({ mesh: ring, age: 0, life: 0.55 + i * 0.15, stationary: true, wave: true });
+      }
+      const count = reducedMotion ? 0 : low ? 6 : 12;
+      for (let i = 0; i < count; i++) {
+        const spark = ball(scene, 0.055, "#c3ffe8", e.x, e.y, e.z);
+        spark.material = new THREE.MeshBasicMaterial({ color: i % 3 ? "#c3ffe8" : "#ffe5ad", transparent: true });
+        const angle = i * Math.PI * 2 / count;
+        effects.push({ mesh: spark, age: 0, life: 0.55, vx: Math.cos(angle) * 4, vz: Math.sin(angle) * 4, vy: 1 + (i % 3) });
+      }
       return;
     }
     if (e.kind === "fire") {
@@ -753,7 +788,6 @@ export function createScene(container, { low = false } = {}) {
       age: 0,
       life: e.kind === "taunt" ? 2 : 1.2,
       ring: true,
-      blind: e.kind === "blindBurst",
     });
     if (["poof", "catch", "rescue", "taunt", "help"].includes(e.kind))
       for (let i = 0; i < 10; i++) {
@@ -782,19 +816,23 @@ export function createScene(container, { low = false } = {}) {
       e.age += dt;
       if (e.age > e.life) {
         scene.remove(e.mesh);
-        e.mesh.material.dispose();
+        e.mesh.material?.dispose();
         if (e.ownGeometry) e.mesh.geometry.dispose();
         effects.splice(i, 1);
         continue;
       }
-      e.mesh.material.opacity = 1 - e.age / e.life;
+      if (e.mesh.material) e.mesh.material.opacity = (e.opacity ?? 1) * (1 - e.age / e.life);
       if (e.path) {
-        const nextIndex = e.path.findIndex((point) => point.t >= e.age);
+        const pathTime = Math.max(0, Math.min(e.path[e.path.length - 1].t, e.age - (e.lag || 0)));
+        const nextIndex = e.path.findIndex((point) => point.t >= pathTime);
         const next = e.path[Math.max(1, nextIndex)], prev = e.path[Math.max(0, nextIndex - 1)];
-        const t = Math.min(1, (e.age - prev.t) / Math.max(0.001, next.t - prev.t));
+        const t = Math.min(1, (pathTime - prev.t) / Math.max(0.001, next.t - prev.t));
         e.mesh.position.set(prev.x + (next.x - prev.x) * t, prev.y + (next.y - prev.y) * t, prev.z + (next.z - prev.z) * t);
+        if (e.spin) e.mesh.rotation.set(e.age * 9, e.age * 5, 0.4);
       }
-      else if (e.ring) e.mesh.scale.setScalar(e.blind ? BLIND.radius / 0.6 : 1 + e.age * 4);
+      else if (e.wave) e.mesh.scale.setScalar(reducedMotion ? BLIND.radius : BLIND.radius * Math.min(1, e.age / 0.3));
+      else if (e.burst) e.mesh.scale.setScalar(reducedMotion ? 2 : 1 + e.age * 12);
+      else if (e.ring) e.mesh.scale.setScalar(1 + e.age * 4);
       else if (!e.stationary) {
         e.mesh.position.x += e.vx * dt;
         e.mesh.position.z += e.vz * dt;
@@ -842,7 +880,7 @@ export function createScene(container, { low = false } = {}) {
       if (o.userData.ownGeometry) o.geometry.dispose();
     });
     effects.forEach((e) => {
-      e.mesh.material.dispose();
+      e.mesh.material?.dispose();
       if (e.ownGeometry) e.mesh.geometry.dispose();
     });
   }
